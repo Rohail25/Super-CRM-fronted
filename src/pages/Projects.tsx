@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import ProjectCard from '../components/projects/ProjectCard';
+import CredentialsModal from '../components/projects/CredentialsModal';
 import Topbar from '../components/layout/Topbar';
 import { useAuthStore } from '../stores/authStore';
 import type { Project } from '../types/project.types';
@@ -18,12 +19,27 @@ interface ProjectAccess {
   };
 }
 
+interface Credential {
+  id: number;
+  email: string;
+  password: string;
+  project?: {
+    id: number;
+    name: string;
+    slug: string;
+  };
+}
+
 export default function Projects() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [showCredentialsModal, setShowCredentialsModal] = useState(false);
+  const [credentials, setCredentials] = useState<Credential[]>([]);
+  const [selectedProjectForCredentials, setSelectedProjectForCredentials] = useState<Project | null>(null);
+  const [credentialsLoading, setCredentialsLoading] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     slug: '',
@@ -101,6 +117,43 @@ export default function Projects() {
     } catch (error: any) {
       console.error('Failed to generate SSO URL:', error);
       alert(error.response?.data?.message || 'Failed to access project. Please try again.');
+    }
+  };
+
+  const handleShowCredentials = async (projectId: number) => {
+    try {
+      setCredentialsLoading(true);
+      const project = projects.find(p => p.id === projectId);
+      
+      if (!project) {
+        console.error('Project not found');
+        return;
+      }
+
+      const response = await api.get<Credential[]>(
+        `/project-manages/project/${projectId}/credentials`
+      );
+
+      const credentialsData = Array.isArray(response.data)
+        ? response.data
+        : response.data?.data || [];
+
+      setCredentials(credentialsData);
+      setSelectedProjectForCredentials(project);
+      setShowCredentialsModal(true);
+    } catch (error: any) {
+      console.error('Failed to fetch credentials:', error);
+      alert(error.response?.data?.message || 'Failed to load credentials. Please try again.');
+    } finally {
+      setCredentialsLoading(false);
+    }
+  };
+
+  const handleOpenExternalLogin = () => {
+    if (selectedProjectForCredentials?.slug === 'mydoctor') {
+      window.open('https://mydoctoradmin.mydoctorplus.it/login', '_blank');
+    } else if (selectedProjectForCredentials?.slug === 'tg-calabria') {
+      window.open('https://tgcalabriareport.com/login', '_blank');
     }
   };
 
@@ -270,6 +323,8 @@ export default function Projects() {
               <ProjectCard
                 project={project}
                 onAccess={handleAccessProject}
+                isSuperAdmin={isSuperAdmin}
+                onShowCredentials={isSuperAdmin ? handleShowCredentials : undefined}
               />
               {isSuperAdmin && (
                 <div className="absolute top-2 right-2 flex gap-2">
@@ -483,6 +538,30 @@ export default function Projects() {
           </div>
         </div>
       )}
+
+      {/* Credentials Modal */}
+      <CredentialsModal
+        isOpen={showCredentialsModal}
+        onClose={() => {
+          setShowCredentialsModal(false);
+          setCredentials([]);
+          setSelectedProjectForCredentials(null);
+        }}
+        credentials={credentials}
+        projectName={selectedProjectForCredentials?.name || 'Project'}
+        externalUrl={
+          selectedProjectForCredentials?.slug === 'mydoctor' || 
+          selectedProjectForCredentials?.slug === 'tg-calabria'
+            ? 'https://mydoctoradmin.mydoctorplus.it/login'
+            : undefined
+        }
+        onOpenExternal={
+          (selectedProjectForCredentials?.slug === 'mydoctor' || 
+           selectedProjectForCredentials?.slug === 'tg-calabria')
+            ? handleOpenExternalLogin
+            : undefined
+        }
+      />
     </div>
   );
 }

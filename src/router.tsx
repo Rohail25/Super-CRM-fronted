@@ -8,6 +8,7 @@ import Support from './pages/Support';
 import Marketing from './pages/Marketing';
 import Companies from './pages/Companies';
 import Projects from './pages/Projects';
+import ProjectManagement from './pages/ProjectManagement';
 import Customers from './pages/Customers';
 import CustomerDetail from './pages/CustomerDetail';
 import Users from './pages/Users';
@@ -106,6 +107,10 @@ export const router = createBrowserRouter([
       {
         path: 'projects/:projectId/tg-calabria',
         element: <TGCalabriaProject />,
+      },
+      {
+        path: 'project-management',
+        element: <ProjectManagement />,
       },
       {
         path: 'companies',

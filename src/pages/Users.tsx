@@ -64,10 +64,10 @@ export default function Users() {
 
   // Fetch companies when modal opens (for super admin and company admin)
   useEffect(() => {
-    if ((isSuperAdmin || isCompanyAdmin) && showCreateModal) {
+    if ((isSuperAdmin || isCompanyAdmin) && (showCreateModal || editingUser)) {
       fetchCompanies();
     }
-  }, [isSuperAdmin, isCompanyAdmin, showCreateModal]);
+  }, [isSuperAdmin, isCompanyAdmin, showCreateModal, editingUser]);
 
   const fetchCompanies = async () => {
     try {
@@ -167,6 +167,10 @@ export default function Users() {
       if (JSON.stringify(formData.permissions) !== JSON.stringify(editingUser.permissions || [])) {
         payload.permissions = formData.permissions.length > 0 ? formData.permissions : null;
       }
+      // Include company_id if super admin changed it
+      if (isSuperAdmin && formData.company_id !== editingUser.company_id) {
+        payload.company_id = formData.company_id;
+      }
 
       await api.put(`/users/${editingUser.id}`, payload);
       setEditingUser(null);
@@ -215,6 +219,7 @@ export default function Users() {
       role: user.role,
       status: user.status,
       permissions: user.permissions || [],
+      company_id: user.company_id || null,
     });
   };
 

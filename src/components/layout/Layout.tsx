@@ -70,11 +70,15 @@ export default function Layout() {
   
   const isSubscriptionPage = location.pathname.startsWith('/subscribe') || 
                             location.pathname.startsWith('/subscription');
+  
+  // Check if we're on doctor or TG Calabria project page (show icon-only sidebar for all users)
+  const isProjectIframe = (location.pathname.match(/^\/projects\/\d+\/doctor$/) ||
+                           location.pathname.match(/^\/projects\/\d+\/tg-calabria$/));
 
   return (
-    <div className="min-h-screen grid grid-cols-[280px_1fr]">
-      <Sidebar />
-      <main className="flex-1 overflow-y-auto bg-gradient-to-br from-aqua-1/20 via-white to-white">
+    <div className={`min-h-screen grid ${isProjectIframe ? 'grid-cols-[80px_1fr]' : 'grid-cols-[280px_1fr]'}`}>
+      <Sidebar iconOnly={isProjectIframe} />
+      <main className={`flex-1 overflow-y-auto ${isProjectIframe ? 'overflow-hidden' : ''} bg-gradient-to-br from-aqua-1/20 via-white to-white`}>
         {needsSubscription && !isSubscriptionPage && (
           <div className="mx-6 mt-6 mb-4 bg-yellow-50 border-2 border-yellow-400 rounded-xl p-4 shadow-sm">
             <div className="flex items-center justify-between">
@@ -96,7 +100,7 @@ export default function Layout() {
             </div>
           </div>
         )}
-        <div className="p-6">
+        <div className={`${isProjectIframe ? 'p-0' : 'p-6'}`}>
           <Outlet />
         </div>
       </main>

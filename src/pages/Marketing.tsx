@@ -463,12 +463,12 @@ export default function Marketing() {
         subtitle="Campaigns, email marketing, and analytics"
         actions={
           <>
-            <button
+            {/* <button
               onClick={fetchStats}
               className="px-4 py-2 text-sm border border-line rounded-xl hover:bg-aqua-1/30 transition-colors text-ink font-medium"
             >
               Analytics
-            </button>
+            </button> */}
             <button
               onClick={() => {
                 setEditingCampaign(null);
@@ -699,13 +699,13 @@ export default function Marketing() {
                           )}
                         </div>
                         {campaign.budget && campaign.budget > 0 && campaign.payment_status !== 'paid' && (
-                          <button
-                            onClick={() => handlePayment(campaign)}
-                            className="text-xs px-2 py-1 bg-green-500 text-white rounded hover:bg-green-600 font-medium"
-                          >
-                            Pay
-                          </button>
-                        )}
+                              <button
+                                onClick={() => handlePayment(campaign)}
+                                className="text-xs px-2 py-1 bg-green-500 text-white rounded hover:bg-green-600 font-medium"
+                              >
+                                Pay
+                              </button>
+                            )}
                         {isSuperAdmin && campaign.payment_status === 'paid' && (
                           <button
                             onClick={() => handleActivate(campaign)}
@@ -859,7 +859,7 @@ export default function Marketing() {
                   )}
                 </div>
 
-                <div>
+                {/* <div>
                   <label className="block text-sm font-semibold text-ink mb-2">Project</label>
                   <select
                     value={formData.project_id || ''}
@@ -873,7 +873,7 @@ export default function Marketing() {
                       </option>
                     ))}
                   </select>
-                </div>
+                </div> */}
 
                 <div>
                   <label className="block text-sm font-semibold text-ink mb-2">Start Date</label>
@@ -919,22 +919,22 @@ export default function Marketing() {
                   </div>
                 </div>
 
-                <div className="md:col-span-2">
+                    <div className="md:col-span-2">
                   <label className="block text-sm font-semibold text-ink mb-2">
                     Target Link <span className="text-red-500">*</span>
                   </label>
-                  <input
+                      <input
                     type="url"
                     value={formData.target_link}
                     onChange={(e) => setFormData({ ...formData, target_link: e.target.value })}
                     placeholder="https://example.com"
                     required
-                    className="w-full px-3 py-2 border border-line rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-aqua-5/20"
-                  />
+                        className="w-full px-3 py-2 border border-line rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-aqua-5/20"
+                      />
                   <p className="text-xs text-muted mt-1">The URL where users will be redirected when clicking the ad</p>
-                </div>
+                    </div>
 
-                <div className="md:col-span-2">
+                    <div className="md:col-span-2">
                   <label className="block text-sm font-semibold text-ink mb-2">Target Audience</label>
                   <div className="space-y-2">
                     {['All Users', 'New Customers', 'Existing Customers', 'VIP Customers', 'Inactive Customers'].map((option) => (
@@ -950,11 +950,11 @@ export default function Marketing() {
                             }
                           }}
                           className="w-4 h-4 text-aqua-5 border-line rounded focus:ring-aqua-5/20"
-                        />
+                      />
                         <span className="text-sm text-ink">{option}</span>
                       </label>
                     ))}
-                  </div>
+                    </div>
                 </div>
 
                 <div className="md:col-span-2">
@@ -973,7 +973,7 @@ export default function Marketing() {
                             }
                           }}
                           className="w-4 h-4 text-aqua-5 border-line rounded focus:ring-aqua-5/20"
-                        />
+                  />
                         <span className="text-sm text-ink">{option}</span>
                       </label>
                     ))}

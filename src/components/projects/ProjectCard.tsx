@@ -3,9 +3,11 @@ import type { Project } from '../../types/project.types';
 interface ProjectCardProps {
   project: Project;
   onAccess: (projectId: number) => void;
+  onShowCredentials?: (projectId: number) => void;
+  isSuperAdmin?: boolean;
 }
 
-export default function ProjectCard({ project, onAccess }: ProjectCardProps) {
+export default function ProjectCard({ project, onAccess, onShowCredentials, isSuperAdmin }: ProjectCardProps) {
   const getIntegrationBadge = () => {
     const colors = {
       api: 'bg-aqua-1 text-aqua-5 border-aqua-5/30',
@@ -58,12 +60,24 @@ export default function ProjectCard({ project, onAccess }: ProjectCardProps) {
         )}
       </div>
 
-      <button
-        onClick={() => onAccess(project.id)}
-        className="w-full px-4 py-2.5 bg-gradient-to-r from-aqua-5 to-aqua-4 text-white rounded-xl hover:shadow-lg hover:shadow-aqua-5/25 transition-all font-semibold text-sm"
-      >
-        {getButtonText()}
-      </button>
+      <div className="flex gap-2">
+        {!isSuperAdmin ?
+        <button
+          onClick={() => onAccess(project.id)}
+          className="flex-1 px-4 py-2.5 bg-gradient-to-r from-aqua-5 to-aqua-4 text-white rounded-xl hover:shadow-lg hover:shadow-aqua-5/25 transition-all font-semibold text-sm"
+        >
+          {getButtonText()}
+        </button> : null}
+        {isSuperAdmin && onShowCredentials && (
+          <button
+            onClick={() => onShowCredentials(project.id)}
+            className="px-4 py-2.5 bg-purple-100 text-purple-600 rounded-xl hover:bg-purple-200 transition-colors font-semibold text-sm border border-purple-300"
+            title="Show project credentials"
+          >
+            🔑 Credentials
+          </button>
+        )}
+      </div>
     </div>
   );
 }

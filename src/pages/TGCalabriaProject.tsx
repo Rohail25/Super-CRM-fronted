@@ -1,19 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../services/api';
-import Topbar from '../components/layout/Topbar';
 import { useAuthStore } from '../stores/authStore';
 
-interface Category {
-  id: string;
-  nameEn: string;
-  nameIt: string;
-  slug: string;
-  parentId: string | null;
-  order: number;
-}
-
-interface NewsStats {
+interface TGCalabriaStats {
   user: {
     id: string;
     name: string;
@@ -42,7 +32,7 @@ interface NewsStats {
     slug: string;
     views: number;
     publishedAt: string;
-    category: {
+    category?: {
       id: string;
       nameEn: string;
       nameIt: string;
@@ -61,260 +51,352 @@ interface NewsStats {
   }>;
 }
 
+interface News {
+  id: string;
+  title: string;
+  slug: string;
+  summary?: string;
+  content?: string;
+  categoryId?: string;
+  category?: {
+    id: string;
+    nameEn: string;
+    nameIt: string;
+  };
+  views?: number;
+  publishedAt: string;
+  status: 'DRAFT' | 'PUBLISHED';
+  isFeatured?: boolean;
+  isBreaking?: boolean;
+}
+
+interface Category {
+  id: string;
+  nameEn: string;
+  nameIt: string;
+  slug: string;
+}
+
 interface ArticleFormData {
   title: string;
+  slug: string;
   summary: string;
   content: string;
   categoryId: string;
-  status: 'DRAFT' | 'PUBLISHED';
   isFeatured: boolean;
+  status: 'DRAFT' | 'PUBLISHED';
   isBreaking: boolean;
-  tags: string[];
-  mainImage: File | null;
-  mainImagePreview: string | null;
+  tags: string;
+  mainImage: string;
 }
 
 export default function TGCalabriaProject() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
-  const { user } = useAuthStore();
-  
+  const user = useAuthStore((state) => state.user);
+  const isSuperAdmin = user?.role === 'super_admin';
+
   const [loading, setLoading] = useState(true);
-  const [loginLoading, setLoginLoading] = useState(true);
-  const [categoriesLoading, setCategoriesLoading] = useState(false);
-  const [statsLoading, setStatsLoading] = useState(false);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [newsStats, setNewsStats] = useState<NewsStats | null>(null);
-  const [showArticleForm, setShowArticleForm] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
-  
+  const [stats, setStats] = useState<TGCalabriaStats | null>(null);
+  const [news, setNews] = useState<News[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [token, setToken] = useState<string | null>(null);
+  const [showArticleModal, setShowArticleModal] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'overview' | 'topNews' | 'categories'>('overview');
+
   const [formData, setFormData] = useState<ArticleFormData>({
     title: '',
+    slug: '',
     summary: '',
     content: '',
     categoryId: '',
-    status: 'PUBLISHED',
     isFeatured: false,
+    status: 'PUBLISHED',
     isBreaking: false,
-    tags: [],
-    mainImage: null,
-    mainImagePreview: null,
+    tags: '',
+    mainImage: '',
   });
-
-  const [tagInput, setTagInput] = useState('');
 
   useEffect(() => {
     if (projectId) {
-      initializeProject();
+      fetchProjectData();
+    } else {
+      setLoading(false);
     }
   }, [projectId]);
 
-  const initializeProject = async () => {
+  const ensureLogin = async (projectIdNum: number) => {
+    // Skip login for super_admin users - they can access directly
+    if (isSuperAdmin) {
+      return true;
+    }
+
+    try {
+      // Try to login first (this will get/refresh the token)
+      const loginResponse = await api.post(`/projects/${projectIdNum}/tg-calabria/login`);
+      
+      if (loginResponse.data?.success) {
+        return true;
+      } else {
+        // If login response doesn't have success flag, still return true if no error
+        if (loginResponse.status >= 200 && loginResponse.status < 300) {
+          return true;
+        }
+        setError('Failed to authenticate with TG Calabria. Please try again.');
+        return false;
+      }
+    } catch (err: any) {
+      console.error('Login error:', err);
+      // Don't set error here, let the parent function handle it
+      throw err;
+    }
+  };
+
+  const fetchProjectData = async () => {
+    if (!projectId) return;
+
     try {
       setLoading(true);
       setError(null);
+
+      const projectIdNum = parseInt(projectId, 10);
       
-      // Step 1: Login user
-      const loginResponse = await loginUser();
-      
-      // Step 2: Fetch categories
-      await fetchCategories();
-      
-      // Step 3: Fetch news stats if we have external_user_id
-      if (loginResponse?.external_user_id) {
-        await fetchNewsStats();
+      // First ensure user is logged in to TG Calabria
+      const isLoggedIn = await ensureLogin(projectIdNum);
+      if (!isLoggedIn) {
+        setLoading(false);
+        return;
+      }
+
+      // Fetch all data in parallel, with better error handling
+      try {
+        const [statsResponse, newsResponse, categoriesResponse] = await Promise.all([
+          api.get(`/projects/${projectId}/tg-calabria/news/stats`),
+          api.get(`/projects/${projectId}/tg-calabria/news`).catch(err => ({ data: { data: [] } })),
+          api.get(`/projects/${projectId}/tg-calabria/categories`).catch(err => ({ data: { data: [] } })),
+        ]);
+
+        // Process stats data
+        if (statsResponse.data?.data) {
+          const statsData = statsResponse.data.data;
+          
+          // Transform the stats data to match the expected format
+          const transformedStats: TGCalabriaStats = {
+            user: statsData.user || {
+              id: '',
+              name: '',
+              email: '',
+            },
+            overview: statsData.overview || {
+              total: 0,
+              published: 0,
+              draft: 0,
+              pending: 0,
+              rejected: 0,
+              featured: 0,
+              breaking: 0,
+            },
+            views: statsData.views || {
+              total: 0,
+              average: 0,
+            },
+            recentActivity: statsData.recentActivity || {
+              newsLast7Days: 0,
+              newsLast30Days: 0,
+            },
+            topNews: statsData.topNews || [],
+            categoryBreakdown: statsData.categoryBreakdown || [],
+          };
+          
+          setStats(transformedStats);
+        } else {
+          setError('Failed to load TG Calabria stats');
+        }
+
+        // Process news data
+        if (newsResponse.data?.data) {
+          const newsData = Array.isArray(newsResponse.data.data) 
+            ? newsResponse.data.data 
+            : [newsResponse.data.data];
+          setNews(newsData);
+        }
+
+        // Process categories data
+        if (categoriesResponse.data?.data) {
+          const categoriesData = Array.isArray(categoriesResponse.data.data)
+            ? categoriesResponse.data.data
+            : [categoriesResponse.data.data];
+          setCategories(categoriesData);
+        }
+      } catch (dataErr: any) {
+        console.error('Error fetching data:', dataErr);
+        setError(dataErr.response?.data?.message || 'Failed to load TG Calabria data');
       }
     } catch (err: any) {
-      console.error('Failed to initialize project:', err);
-      setError(err.response?.data?.message || 'Failed to initialize project');
+      console.error('Failed to fetch TG Calabria data:', err);
+      
+      // Handle different error scenarios
+      if (err.response?.status === 401) {
+        setError('Session expired. Please refresh the page and try again.');
+      } else if (err.response?.status === 403) {
+        setError('You do not have access to this project.');
+      } else if (err.response?.status === 400) {
+        setError(err.response?.data?.message || 'Invalid project. Please contact support.');
+      } else {
+        setError(err.response?.data?.message || 'Failed to load TG Calabria project data. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const loginUser = async () => {
-    try {
-      setLoginLoading(true);
-      const response = await api.post(`/projects/${projectId}/tg-calabria/login`);
-      
-      if (response.data.success) {
-        console.log('Login successful');
-        return response.data;
-      } else {
-        throw new Error(response.data.message || 'Login failed');
-      }
-    } catch (err: any) {
-      console.error('Login failed:', err);
-      throw new Error(err.response?.data?.message || 'Failed to login');
-    } finally {
-      setLoginLoading(false);
-    }
-  };
-
-  const fetchCategories = async () => {
-    try {
-      setCategoriesLoading(true);
-      const response = await api.get(`/projects/${projectId}/tg-calabria/categories`);
-      
-      if (response.data.success && response.data.data) {
-        setCategories(response.data.data);
-      } else {
-        throw new Error(response.data.message || 'Failed to fetch categories');
-      }
-    } catch (err: any) {
-      console.error('Failed to fetch categories:', err);
-      setError(err.response?.data?.message || 'Failed to fetch categories');
-    } finally {
-      setCategoriesLoading(false);
-    }
-  };
-
-  const fetchNewsStats = async () => {
-    try {
-      setStatsLoading(true);
-      const response = await api.get(`/projects/${projectId}/tg-calabria/news/stats`);
-      
-      if (response.data.success && response.data.data) {
-        setNewsStats(response.data.data);
-      } else {
-        console.warn('Failed to fetch news stats:', response.data.message);
-        // Don't throw error, just log it - stats are optional
-      }
-    } catch (err: any) {
-      console.error('Failed to fetch news stats:', err);
-      // Don't set error, stats are optional
-    } finally {
-      setStatsLoading(false);
-    }
-  };
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    const { name, value, type } = e.target;
-    
-    if (type === 'checkbox') {
-      const checked = (e.target as HTMLInputElement).checked;
-      setFormData(prev => ({
-        ...prev,
-        [name]: checked,
-      }));
-    } else {
-      setFormData(prev => ({
-        ...prev,
-        [name]: value,
-      }));
-    }
-  };
-
-  const handleAddTag = () => {
-    if (tagInput.trim() && !formData.tags.includes(tagInput.trim())) {
-      setFormData(prev => ({
-        ...prev,
-        tags: [...prev.tags, tagInput.trim()],
-      }));
-      setTagInput('');
-    }
-  };
-
-  const handleRemoveTag = (tagToRemove: string) => {
-    setFormData(prev => ({
-      ...prev,
-      tags: prev.tags.filter(tag => tag !== tagToRemove),
-    }));
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleCreateArticle = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!formData.title || !formData.content || !formData.categoryId) {
-      setError('Please fill in all required fields');
+    if (!projectId) {
+      setSubmitError('Project ID not found');
       return;
     }
 
     try {
       setSubmitting(true);
-      setError(null);
-      setSuccess(null);
+      setSubmitError(null);
 
-      // Create FormData for file upload
-      const submitFormData = new FormData();
-      submitFormData.append('title', formData.title);
-      submitFormData.append('content', formData.content);
-      submitFormData.append('categoryId', formData.categoryId);
-      submitFormData.append('status', formData.status);
-      
-      if (formData.summary) {
-        submitFormData.append('summary', formData.summary);
-      }
-      if (formData.isFeatured !== undefined) {
-        submitFormData.append('isFeatured', formData.isFeatured.toString());
-      }
-      if (formData.isBreaking !== undefined) {
-        submitFormData.append('isBreaking', formData.isBreaking.toString());
-      }
-      if (formData.tags && formData.tags.length > 0) {
-        formData.tags.forEach((tag) => {
-          submitFormData.append('tags[]', tag);
+      // Use FormData for file upload support
+      const formDataObj = new FormData();
+      formDataObj.append('title', formData.title);
+      formDataObj.append('slug', formData.slug || formData.title.toLowerCase().replace(/\s+/g, '-'));
+      if (formData.summary) formDataObj.append('summary', formData.summary);
+      formDataObj.append('content', formData.content);
+      formDataObj.append('categoryId', formData.categoryId);
+      formDataObj.append('isFeatured', String(formData.isFeatured));
+      formDataObj.append('status', formData.status);
+      formDataObj.append('isBreaking', String(formData.isBreaking));
+      if (formData.tags) {
+        formData.tags.split(',').map((t) => t.trim()).forEach((tag) => {
+          formDataObj.append('tags[]', tag);
         });
       }
+
+      // Only add mainImage file if provided
       if (formData.mainImage) {
-        submitFormData.append('mainImage', formData.mainImage);
+        // Check if it's a base64 string or a file
+        if (typeof formData.mainImage === 'string' && formData.mainImage.startsWith('data:')) {
+          // Convert base64 to File object
+          const arr = formData.mainImage.split(',');
+          const mime = arr[0].match(/:(.*?);/)?.[1] || 'image/jpeg';
+          const bstr = atob(arr[1]);
+          const n = bstr.length;
+          const u8arr = new Uint8Array(n);
+          for (let i = 0; i < n; i++) {
+            u8arr[i] = bstr.charCodeAt(i);
+          }
+          const file = new File([u8arr], 'article-image', { type: mime });
+          formDataObj.append('mainImage', file);
+        } else if (formData.mainImage instanceof File) {
+          formDataObj.append('mainImage', formData.mainImage);
+        }
       }
 
-      const response = await api.post(`/projects/${projectId}/tg-calabria/news`, submitFormData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
-      
-      if (response.data.success) {
-        setSuccess('Article created successfully!');
-        // Reset form
-        setFormData({
-          title: '',
-          summary: '',
-          content: '',
-          categoryId: '',
-          status: 'PUBLISHED',
-          isFeatured: false,
-          isBreaking: false,
-          tags: [],
-          mainImage: null,
-          mainImagePreview: null,
-        });
-        setShowArticleForm(false);
+      // Call backend endpoint with FormData
+      // Do NOT set Content-Type header - axios will set it automatically with the boundary
+      const response = await api.post(`/projects/${projectId}/tg-calabria/news`, formDataObj);
+
+      if (response.status === 201 || response.status === 200) {
+        setShowArticleModal(false);
+        resetForm();
         // Refresh stats
-        await fetchNewsStats();
-      } else {
-        throw new Error(response.data.message || 'Failed to create article');
+        await fetchProjectData();
+        alert('✅ Article created successfully!');
       }
     } catch (err: any) {
       console.error('Failed to create article:', err);
-      const errorMessage = err.response?.data?.message || 'Failed to create article';
-      const errors = err.response?.data?.errors;
       
-      if (errors && Array.isArray(errors)) {
-        const errorDetails = errors.map((e: any) => 
-          `${e.field || 'Error'}: ${e.message || JSON.stringify(e)}`
-        ).join('\n');
-        setError(`${errorMessage}\n${errorDetails}`);
+      // Handle specific error messages
+      if (err.response?.status === 401) {
+        setSubmitError('Session expired. Please refresh the page and try again.');
+      } else if (err.response?.status === 422) {
+        setSubmitError('Please fill all required fields correctly.');
+      } else if (err.response?.data?.message) {
+        setSubmitError(err.response.data.message);
       } else {
-        setError(errorMessage);
+        setSubmitError('Failed to create article. Please try again.');
       }
     } finally {
       setSubmitting(false);
     }
   };
 
-  if (loading || loginLoading) {
+  const resetForm = () => {
+    setFormData({
+      title: '',
+      slug: '',
+      summary: '',
+      content: '',
+      categoryId: '',
+      isFeatured: false,
+      status: 'PUBLISHED',
+      isBreaking: false,
+      tags: '',
+      mainImage: '',
+    });
+  };
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setFormData({ ...formData, mainImage: reader.result as string });
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50">
-        <Topbar />
-        <div className="flex items-center justify-center h-[calc(100vh-64px)]">
+      <div className="flex flex-col h-screen bg-gray-50">
+        <div className="border-b border-line px-6 py-4 flex items-center">
+          <button
+            onClick={() => navigate('/projects')}
+            className="px-3 py-2 text-sm border border-line rounded-xl hover:bg-aqua-1/30 transition-colors text-ink font-medium"
+          >
+            ← Back to Projects
+          </button>
+        </div>
+        <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-aqua-5 mx-auto mb-4"></div>
-            <p className="text-gray-600">Loading TG Calabria project...</p>
+            <p className="text-muted">Loading TG Calabria data...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !stats) {
+    return (
+      <div className="flex flex-col h-screen bg-gray-50">
+        <div className="border-b border-line px-6 py-4 flex items-center">
+          <button
+            onClick={() => navigate('/projects')}
+            className="px-3 py-2 text-sm border border-line rounded-xl hover:bg-aqua-1/30 transition-colors text-ink font-medium"
+          >
+            ← Back to Projects
+          </button>
+        </div>
+        <div className="flex-1 flex items-center justify-center">
+          <div className="bg-white rounded-xl p-8 border border-bad/30 max-w-md text-center">
+            <h3 className="text-lg font-semibold text-ink mb-2">⚠️ Error</h3>
+            <p className="text-muted text-sm mb-4">{error || 'Unable to load TG Calabria data'}</p>
+            <button
+              onClick={fetchProjectData}
+              className="px-4 py-2 bg-aqua-5 text-white rounded-lg hover:bg-aqua-4 transition-colors font-medium"
+            >
+              Try Again
+            </button>
           </div>
         </div>
       </div>
@@ -322,425 +404,431 @@ export default function TGCalabriaProject() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Topbar />
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="mb-6">
+    <div className="flex flex-col h-screen bg-gray-50">
+      {/* Header */}
+      <div className="border-b border-line px-6 py-4 flex items-center justify-between bg-white">
+        <div className="flex items-center gap-4">
           <button
             onClick={() => navigate('/projects')}
-            className="text-aqua-5 hover:text-aqua-6 mb-4 flex items-center gap-2"
+            className="px-3 py-2 text-sm border border-line rounded-xl hover:bg-aqua-1/30 transition-colors text-ink font-medium"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-            Back to Projects
+            ← Back to Projects
           </button>
-          <h1 className="text-3xl font-bold text-gray-900">TG Calabria Project</h1>
-          <p className="text-gray-600 mt-2">Manage your news articles and categories</p>
+          <h1 className="text-xl font-bold text-ink">TG Calabria Report</h1>
         </div>
+        <button
+          onClick={() => setShowArticleModal(true)}
+          className="px-4 py-2 text-sm bg-aqua-5 text-white rounded-xl hover:bg-aqua-4 transition-all font-semibold"
+        >
+          + Create Article
+        </button>
+      </div>
 
-        {error && (
-          <div className="mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
-            <div className="whitespace-pre-line">{error}</div>
+      {/* User Summary Card */}
+      <div className="px-6 py-6">
+        <div className="bg-white rounded-xl border border-line p-6">
+          <div className="mb-6">
+            <h2 className="text-2xl font-bold text-ink mb-1">{stats.user?.name}</h2>
+            <p className="text-sm text-muted">{stats.user?.email}</p>
           </div>
-        )}
 
-        {success && (
-          <div className="mb-6 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg">
-            {success}
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
+            <div className="text-center">
+              <div className="text-2xl font-bold text-aqua-5">{stats.overview?.total || 0}</div>
+              <div className="text-xs text-muted mt-1">Total News</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-green-600">{stats.overview?.published || 0}</div>
+              <div className="text-xs text-muted mt-1">Published</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-yellow-600">{stats.overview?.draft || 0}</div>
+              <div className="text-xs text-muted mt-1">Draft</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-orange-600">{stats.overview?.pending || 0}</div>
+              <div className="text-xs text-muted mt-1">Pending</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-red-600">{stats.overview?.rejected || 0}</div>
+              <div className="text-xs text-muted mt-1">Rejected</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-purple-600">{stats.overview?.featured || 0}</div>
+              <div className="text-xs text-muted mt-1">Featured</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-red-700">{stats.overview?.breaking || 0}</div>
+              <div className="text-xs text-muted mt-1">Breaking</div>
+            </div>
           </div>
-        )}
-
-        {/* Header with Create Article Button */}
-        <div className="mb-6 flex justify-between items-center">
-          <h2 className="text-2xl font-semibold text-gray-800">News Statistics</h2>
-          <button
-            onClick={() => setShowArticleForm(!showArticleForm)}
-            className="px-6 py-2.5 bg-gradient-to-r from-aqua-5 to-aqua-4 text-white rounded-lg hover:shadow-lg transition-all font-semibold"
-          >
-            {showArticleForm ? 'Cancel' : 'Create Article'}
-          </button>
         </div>
+      </div>
 
-        {/* News Statistics Section */}
-        {statsLoading ? (
-          <div className="mb-8 bg-white rounded-lg shadow-md p-8 text-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-aqua-5 mx-auto mb-4"></div>
-            <p className="text-gray-600">Loading statistics...</p>
-          </div>
-        ) : newsStats && (
-          <div className="mb-8 space-y-6">
-            {/* Overview Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="bg-white rounded-lg shadow-md p-6 border-l-4 border-blue-500">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-600 mb-1">Total Articles</p>
-                    <p className="text-3xl font-bold text-gray-800">{newsStats.overview.total}</p>
+      {/* Tabs Navigation */}
+      <div className="px-6 mb-4">
+        <div className="bg-white rounded-xl border border-line p-1 inline-flex gap-1">
+          {[
+            { id: 'overview', label: '📊 Overview' },
+            { id: 'topNews', label: '⭐ Top News' },
+            { id: 'categories', label: '📁 Categories' },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as any)}
+              className={`px-4 py-2 rounded-lg font-medium text-sm transition-all ${
+                activeTab === tab.id
+                  ? 'bg-aqua-5 text-white shadow-md'
+                  : 'text-muted hover:text-ink hover:bg-gray-50'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Tab Content */}
+      <div className="flex-1 px-6 pb-6 overflow-auto">
+        <div className="space-y-4">
+          {/* Overview Tab */}
+          {activeTab === 'overview' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="bg-white rounded-xl border border-line p-6">
+                <h3 className="text-lg font-semibold text-ink mb-4">📈 Total Views</h3>
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted">Total Views</span>
+                    <span className="text-2xl font-bold text-aqua-5">{stats.views?.total?.toLocaleString() || 0}</span>
                   </div>
-                  <div className="bg-blue-100 rounded-full p-3">
-                    <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted">Average per News</span>
+                    <span className="text-2xl font-bold text-aqua-5">{Math.round(stats.views?.average || 0)}</span>
                   </div>
                 </div>
               </div>
 
-              <div className="bg-white rounded-lg shadow-md p-6 border-l-4 border-green-500">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-600 mb-1">Published</p>
-                    <p className="text-3xl font-bold text-gray-800">{newsStats.overview.published}</p>
+              <div className="bg-white rounded-xl border border-line p-6">
+                <h3 className="text-lg font-semibold text-ink mb-4">📅 Recent Activity</h3>
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted">Last 7 Days</span>
+                    <span className="text-2xl font-bold text-aqua-5">{stats.recentActivity?.newsLast7Days || 0}</span>
                   </div>
-                  <div className="bg-green-100 rounded-full p-3">
-                    <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-lg shadow-md p-6 border-l-4 border-yellow-500">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-600 mb-1">Draft</p>
-                    <p className="text-3xl font-bold text-gray-800">{newsStats.overview.draft}</p>
-                  </div>
-                  <div className="bg-yellow-100 rounded-full p-3">
-                    <svg className="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                    </svg>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-lg shadow-md p-6 border-l-4 border-purple-500">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-600 mb-1">Total Views</p>
-                    <p className="text-3xl font-bold text-gray-800">{newsStats.views.total.toLocaleString()}</p>
-                  </div>
-                  <div className="bg-purple-100 rounded-full p-3">
-                    <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                    </svg>
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted">Last 30 Days</span>
+                    <span className="text-2xl font-bold text-aqua-5">{stats.recentActivity?.newsLast30Days || 0}</span>
                   </div>
                 </div>
               </div>
             </div>
+          )}
 
-            {/* Additional Stats Row */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="bg-white rounded-lg shadow-md p-6">
-                <p className="text-sm text-gray-600 mb-2">Average Views per Article</p>
-                <p className="text-2xl font-bold text-gray-800">{newsStats.views.average.toLocaleString()}</p>
-              </div>
-              <div className="bg-white rounded-lg shadow-md p-6">
-                <p className="text-sm text-gray-600 mb-2">Articles Last 7 Days</p>
-                <p className="text-2xl font-bold text-gray-800">{newsStats.recentActivity.newsLast7Days}</p>
-              </div>
-              <div className="bg-white rounded-lg shadow-md p-6">
-                <p className="text-sm text-gray-600 mb-2">Articles Last 30 Days</p>
-                <p className="text-2xl font-bold text-gray-800">{newsStats.recentActivity.newsLast30Days}</p>
-              </div>
+          {/* Top News Tab */}
+          {activeTab === 'topNews' && (
+            <div className="space-y-3">
+              {news && news.length > 0 ? (
+                news.map((article) => (
+                  <div key={article.id} className="bg-white rounded-xl border border-line p-5 hover:shadow-md transition-shadow">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1">
+                        <h4 className="font-semibold text-ink mb-2">{article.title}</h4>
+                        <p className="text-sm text-muted mb-3 line-clamp-2">{article.summary || article.content || 'No description'}</p>
+                        <div className="flex items-center gap-3 text-sm text-muted flex-wrap">
+                          <span className="bg-gray-100 px-2 py-1 rounded">{article.category?.nameEn || 'Uncategorized'}</span>
+                          <span>•</span>
+                          <span>{new Date(article.publishedAt).toLocaleDateString()}</span>
+                          <span>•</span>
+                          <span className={`px-2 py-1 rounded text-xs font-medium ${
+                            article.status === 'PUBLISHED' 
+                              ? 'bg-green-100 text-green-800' 
+                              : 'bg-yellow-100 text-yellow-800'
+                          }`}>
+                            {article.status}
+                          </span>
+                          {article.isFeatured && <span className="text-purple-600">⭐ Featured</span>}
+                          {article.isBreaking && <span className="text-red-600">🔴 Breaking</span>}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-2xl font-bold text-aqua-5">{article.views?.toLocaleString() || 0}</div>
+                        <div className="text-xs text-muted">views</div>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-12 text-muted">No news found</div>
+              )}
             </div>
+          )}
 
-            {/* Top News Section */}
-            {newsStats.topNews && newsStats.topNews.length > 0 && (
-              <div className="bg-white rounded-lg shadow-md p-6">
-                <h3 className="text-xl font-semibold text-gray-800 mb-4">Top Performing Articles</h3>
-                <div className="space-y-4">
-                  {newsStats.topNews.map((news) => (
-                    <div key={news.id} className="border-b border-gray-200 pb-4 last:border-0 last:pb-0">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <h4 className="text-lg font-semibold text-gray-800 mb-1">{news.title}</h4>
-                          <div className="flex items-center gap-4 text-sm text-gray-600">
-                            <span className="flex items-center gap-1">
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-                              </svg>
-                              {news.category.nameEn}
-                            </span>
-                            <span className="flex items-center gap-1">
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                              </svg>
-                              {news.views.toLocaleString()} views
-                            </span>
-                            <span className="flex items-center gap-1">
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                              </svg>
-                              {new Date(news.publishedAt).toLocaleDateString()}
-                            </span>
+          {/* Categories Tab */}
+          {activeTab === 'categories' && (
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-lg font-semibold text-ink mb-4">📊 Category Breakdown</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {stats.categoryBreakdown && stats.categoryBreakdown.length > 0 ? (
+                    stats.categoryBreakdown.map((cat) => (
+                      <div key={cat.categoryId} className="bg-white rounded-xl border border-line p-5 hover:shadow-md transition-shadow">
+                        <h4 className="font-semibold text-ink mb-3">{cat.category?.nameEn}</h4>
+                        <div className="space-y-2">
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm text-muted">News Count</span>
+                            <span className="font-bold text-aqua-5">{cat.newsCount}</span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm text-muted">Total Views</span>
+                            <span className="font-bold text-aqua-5">{cat.totalViews?.toLocaleString() || 0}</span>
+                          </div>
+                          <div className="mt-3 w-full bg-gray-200 rounded-full h-2">
+                            <div
+                              className="bg-aqua-5 h-2 rounded-full"
+                              style={{
+                                width: `${
+                                  (cat.newsCount / (stats.overview?.total || 1)) * 100
+                                }%`,
+                              }}
+                            ></div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    ))
+                  ) : (
+                    <div className="text-center py-12 text-muted col-span-full">No category breakdown found</div>
+                  )}
                 </div>
               </div>
-            )}
 
-            {/* Category Breakdown */}
-            {newsStats.categoryBreakdown && newsStats.categoryBreakdown.length > 0 && (
-              <div className="bg-white rounded-lg shadow-md p-6">
-                <h3 className="text-xl font-semibold text-gray-800 mb-4">Category Breakdown</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {newsStats.categoryBreakdown.map((item) => (
-                    <div key={item.categoryId} className="border border-gray-200 rounded-lg p-4">
-                      <h4 className="font-semibold text-gray-800 mb-2">
-                        {item.category.nameEn} ({item.category.nameIt})
-                      </h4>
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-gray-600">{item.newsCount} articles</span>
-                        <span className="text-gray-800 font-medium">{item.totalViews.toLocaleString()} views</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {showArticleForm && (
-          <div className="mb-8 bg-white rounded-lg shadow-md p-6">
-            <h3 className="text-xl font-semibold text-gray-800 mb-4">Create New Article</h3>
-            <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Title <span className="text-red-500">*</span>
-                </label>
+                <h3 className="text-lg font-semibold text-ink mb-4">📚 All Categories</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {categories && categories.length > 0 ? (
+                    categories.map((cat) => (
+                      <div key={cat.id} className="bg-white rounded-xl border border-line p-5 hover:shadow-md transition-shadow">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex-1">
+                            <h4 className="font-semibold text-ink mb-2">{cat.nameEn}</h4>
+                            <p className="text-sm text-muted mb-2 italic">{cat.nameIt}</p>
+                            <p className="text-xs text-muted">Slug: <code className="bg-gray-100 px-2 py-1 rounded">{cat.slug}</code></p>
+                          </div>
+                          <div className="text-xs text-muted bg-gray-100 px-3 py-1 rounded">
+                            ID: {cat.id.substring(0, 8)}...
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-center py-12 text-muted col-span-full">No categories found</div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Article Creation Modal */}
+      {showArticleModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 overflow-auto py-6">
+          <div className="bg-white rounded-2xl w-full max-w-2xl p-8 shadow-2xl my-auto">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-2xl font-bold text-ink">Create Article</h3>
+              <button
+                onClick={() => {
+                  setShowArticleModal(false);
+                  setSubmitError(null);
+                }}
+                className="text-2xl text-muted hover:text-ink transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+
+            {submitError && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                {submitError}
+              </div>
+            )}
+
+            <form onSubmit={handleCreateArticle} className="space-y-5">
+              {/* Title */}
+              <div>
+                <label className="block text-sm font-semibold text-ink mb-2">Title *</label>
                 <input
                   type="text"
-                  name="title"
                   value={formData.title}
-                  onChange={handleInputChange}
+                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                   required
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-aqua-5 focus:border-transparent"
-                  placeholder="Enter article title"
+                  placeholder="Article title"
+                  className="w-full px-4 py-2 border border-line rounded-lg focus:outline-none focus:ring-2 focus:ring-aqua-5"
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Summary
-                </label>
-                <textarea
-                  name="summary"
-                  value={formData.summary}
-                  onChange={handleInputChange}
-                  rows={3}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-aqua-5 focus:border-transparent"
-                  placeholder="Enter article summary"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Content <span className="text-red-500">*</span>
-                </label>
-                <textarea
-                  name="content"
-                  value={formData.content}
-                  onChange={handleInputChange}
-                  required
-                  rows={10}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-aqua-5 focus:border-transparent font-mono text-sm"
-                  placeholder="Enter article content (HTML supported)"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Category <span className="text-red-500">*</span>
-                </label>
-                <select
-                  name="categoryId"
-                  value={formData.categoryId}
-                  onChange={handleInputChange}
-                  required
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-aqua-5 focus:border-transparent"
-                >
-                  <option value="">Select a category</option>
-                  {categories.map((category) => (
-                    <option key={category.id} value={category.id}>
-                      {category.nameEn} ({category.nameIt})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Status
-                </label>
-                <select
-                  name="status"
-                  value={formData.status}
-                  onChange={handleInputChange}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-aqua-5 focus:border-transparent"
-                >
-                  <option value="DRAFT">Draft</option>
-                  <option value="PUBLISHED">Published</option>
-                </select>
-              </div>
-
-              <div className="flex gap-6">
-                <label className="flex items-center">
-                  <input
-                    type="checkbox"
-                    name="isFeatured"
-                    checked={formData.isFeatured}
-                    onChange={handleInputChange}
-                    className="mr-2 w-4 h-4 text-aqua-5 focus:ring-aqua-5 border-gray-300 rounded"
-                  />
-                  <span className="text-sm text-gray-700">Featured</span>
-                </label>
-                <label className="flex items-center">
-                  <input
-                    type="checkbox"
-                    name="isBreaking"
-                    checked={formData.isBreaking}
-                    onChange={handleInputChange}
-                    className="mr-2 w-4 h-4 text-aqua-5 focus:ring-aqua-5 border-gray-300 rounded"
-                  />
-                  <span className="text-sm text-gray-700">Breaking News</span>
-                </label>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Tags
-                </label>
-                <div className="flex gap-2 mb-2">
+              <div className="grid grid-cols-2 gap-4">
+                {/* Slug */}
+                <div>
+                  <label className="block text-sm font-semibold text-ink mb-2">Slug</label>
                   <input
                     type="text"
-                    value={tagInput}
-                    onChange={(e) => setTagInput(e.target.value)}
-                    onKeyPress={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        handleAddTag();
-                      }
-                    }}
-                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-aqua-5 focus:border-transparent"
-                    placeholder="Enter tag and press Enter"
+                    value={formData.slug}
+                    onChange={(e) => setFormData({ ...formData, slug: e.target.value })}
+                    placeholder="Auto-generated if empty"
+                    className="w-full px-4 py-2 border border-line rounded-lg focus:outline-none focus:ring-2 focus:ring-aqua-5"
                   />
-                  <button
-                    type="button"
-                    onClick={handleAddTag}
-                    className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
-                  >
-                    Add
-                  </button>
                 </div>
-                {formData.tags.length > 0 && (
-                  <div className="flex flex-wrap gap-2">
-                    {formData.tags.map((tag) => (
-                      <span
-                        key={tag}
-                        className="inline-flex items-center gap-1 px-3 py-1 bg-aqua-5/10 text-aqua-7 rounded-full text-sm"
-                      >
-                        {tag}
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveTag(tag)}
-                          className="text-aqua-7 hover:text-aqua-9"
-                        >
-                          ×
-                        </button>
-                      </span>
+
+                {/* Category */}
+                <div>
+                  <label className="block text-sm font-semibold text-ink mb-2">Category *</label>
+                  <select
+                    value={formData.categoryId}
+                    onChange={(e) => setFormData({ ...formData, categoryId: e.target.value })}
+                    required
+                    className="w-full px-4 py-2 border border-line rounded-lg focus:outline-none focus:ring-2 focus:ring-aqua-5"
+                  >
+                    <option value="">Select a category</option>
+                    {categories.map((cat) => (
+                      <option key={cat.id} value={cat.id}>
+                        {cat.nameEn}
+                      </option>
                     ))}
-                  </div>
-                )}
+                  </select>
+                </div>
               </div>
 
+              {/* Summary */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Main Image
-                </label>
+                <label className="block text-sm font-semibold text-ink mb-2">Summary *</label>
+                <textarea
+                  value={formData.summary}
+                  onChange={(e) => setFormData({ ...formData, summary: e.target.value })}
+                  required
+                  placeholder="Brief summary of the article"
+                  rows={2}
+                  className="w-full px-4 py-2 border border-line rounded-lg focus:outline-none focus:ring-2 focus:ring-aqua-5 resize-none"
+                />
+              </div>
+
+              {/* Content */}
+              <div>
+                <label className="block text-sm font-semibold text-ink mb-2">Content *</label>
+                <textarea
+                  value={formData.content}
+                  onChange={(e) => setFormData({ ...formData, content: e.target.value })}
+                  required
+                  placeholder="Full article content (HTML format)"
+                  rows={4}
+                  className="w-full px-4 py-2 border border-line rounded-lg focus:outline-none focus:ring-2 focus:ring-aqua-5 resize-none"
+                />
+              </div>
+
+              {/* Image Upload */}
+              <div>
+                <label className="block text-sm font-semibold text-ink mb-2">Main Image</label>
                 <input
                   type="file"
                   accept="image/*"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      setFormData({
-                        ...formData,
-                        mainImage: file,
-                        mainImagePreview: URL.createObjectURL(file),
-                      });
-                    }
-                  }}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-aqua-5 focus:border-transparent"
+                  onChange={handleImageUpload}
+                  className="w-full px-4 py-2 border border-line rounded-lg focus:outline-none focus:ring-2 focus:ring-aqua-5"
                 />
-                {formData.mainImagePreview && (
+                {formData.mainImage && (
                   <div className="mt-2">
-                    <img
-                      src={formData.mainImagePreview}
-                      alt="Preview"
-                      className="max-w-xs max-h-48 rounded-lg border border-gray-300 object-cover"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setFormData({
-                          ...formData,
-                          mainImage: null,
-                          mainImagePreview: null,
-                        });
-                      }}
-                      className="mt-2 text-sm text-red-600 hover:text-red-800"
-                    >
-                      Remove Image
-                    </button>
+                    <img src={formData.mainImage} alt="Preview" className="max-h-32 rounded-lg object-cover" />
                   </div>
                 )}
               </div>
 
-              <div className="flex gap-4 pt-4">
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="px-6 py-2.5 bg-gradient-to-r from-aqua-5 to-aqua-4 text-white rounded-lg hover:shadow-lg transition-all font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {submitting ? 'Creating...' : 'Create Article'}
-                </button>
+              {/* Tags */}
+              <div>
+                <label className="block text-sm font-semibold text-ink mb-2">Tags</label>
+                <input
+                  type="text"
+                  value={formData.tags}
+                  onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
+                  placeholder="Comma-separated (e.g., breaking, news, event)"
+                  className="w-full px-4 py-2 border border-line rounded-lg focus:outline-none focus:ring-2 focus:ring-aqua-5"
+                />
+              </div>
+
+              {/* Checkboxes */}
+              <div className="grid grid-cols-2 gap-4">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formData.isFeatured}
+                    onChange={(e) => setFormData({ ...formData, isFeatured: e.target.checked })}
+                    className="w-4 h-4 accent-aqua-5 rounded"
+                  />
+                  <span className="text-sm font-medium text-ink">Featured</span>
+                </label>
+
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formData.isBreaking}
+                    onChange={(e) => setFormData({ ...formData, isBreaking: e.target.checked })}
+                    className="w-4 h-4 accent-aqua-5 rounded"
+                  />
+                  <span className="text-sm font-medium text-ink">Breaking News</span>
+                </label>
+              </div>
+
+              {/* Status */}
+              <div>
+                <label className="block text-sm font-semibold text-ink mb-2">Status</label>
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="status"
+                      value="PUBLISHED"
+                      checked={formData.status === 'PUBLISHED'}
+                      onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
+                      className="w-4 h-4 accent-aqua-5"
+                    />
+                    <span className="text-sm font-medium text-ink">Published</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="status"
+                      value="DRAFT"
+                      checked={formData.status === 'DRAFT'}
+                      onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
+                      className="w-4 h-4 accent-aqua-5"
+                    />
+                    <span className="text-sm font-medium text-ink">Draft</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Submit Button */}
+              <div className="flex gap-3 pt-4 border-t border-line">
                 <button
                   type="button"
                   onClick={() => {
-                    setShowArticleForm(false);
-                    setError(null);
-                    setSuccess(null);
-                    // Reset form
-                    setFormData({
-                      title: '',
-                      summary: '',
-                      content: '',
-                      categoryId: '',
-                      status: 'PUBLISHED',
-                      isFeatured: false,
-                      isBreaking: false,
-                      tags: [],
-                      mainImage: null,
-                      mainImagePreview: null,
-                    });
+                    setShowArticleModal(false);
+                    setSubmitError(null);
+                    resetForm();
                   }}
-                  className="px-6 py-2.5 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-semibold"
+                  className="flex-1 px-4 py-2 border border-line text-ink rounded-lg hover:bg-gray-50 transition-colors font-medium"
                 >
                   Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="flex-1 px-4 py-2 bg-aqua-5 text-white rounded-lg hover:bg-aqua-4 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {submitting ? 'Creating...' : 'Create Article'}
                 </button>
               </div>
             </form>
           </div>
-        )}
-
-      </div>
+        </div>
+      )}
     </div>
   );
 }
