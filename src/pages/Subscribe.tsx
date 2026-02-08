@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../services/api';
 import { useAuthStore } from '../stores/authStore';
@@ -14,6 +14,7 @@ interface SubscriptionPlan {
   interval: string;
   features: string[] | null;
   formatted_price?: string;
+  is_active: boolean;
 }
 
 interface Subscription {
@@ -27,7 +28,11 @@ export default function Subscribe() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const user = useAuthStore((state) => state.user);
-  const [plan, setPlan] = useState<SubscriptionPlan | null>(null);
+  
+  // Changed from single plan to array of plans
+  const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
+  const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan | null>(null);
+  
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [loading, setLoading] = useState(true);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
@@ -35,50 +40,77 @@ export default function Subscribe() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const checkAuth = useAuthStore((state) => state.checkAuth);
+  
+  // Use a ref to track if we've already processed the success message to prevent loops
+  const successProcessed = useRef(false);
 
   useEffect(() => {
+    const processParams = async () => {
     // Check for success message in URL
     const success = searchParams.get('success');
     const message = searchParams.get('message');
     
-    if (success === 'true' && message) {
+      if (success === 'true' && message && !successProcessed.current) {
+        successProcessed.current = true;
       setSuccessMessage(decodeURIComponent(message));
-      // Remove success params from URL
+        
+        // Remove success params from URL without triggering a refresh/loop
+        // We use replace: true to update the history stack
       setSearchParams({}, { replace: true });
+        
       // Refresh subscription data
-      fetchData();
-      checkAuth();
-    } else {
+        await fetchData();
+        await checkAuth();
+      } else if (!successProcessed.current) {
+        // Only fetch if we haven't just processed a success message (which already fetches)
       fetchData();
     }
+    };
+
+    processParams();
     
     // Periodically check subscription status in case webhook processed it
     const interval = setInterval(async () => {
       try {
+        // Only check if we are not currently loading/checking out
+        if (!checkoutLoading) {
         await checkAuth();
         const currentUser = useAuthStore.getState().user;
         if (currentUser?.company?.subscription_status === 'active') {
           // Refresh subscription data
           fetchData();
+           }
         }
       } catch (error) {
         console.error('Failed to check subscription status:', error);
       }
-    }, 3000); // Check every 3 seconds
+    }, 5000); // Increased interval to 5 seconds to reduce load
 
     return () => clearInterval(interval);
-  }, [checkAuth, navigate, searchParams, setSearchParams]);
+  }, [checkAuth, navigate, searchParams, setSearchParams, checkoutLoading]);
 
   const fetchData = async () => {
     try {
+      // Don't set loading to true if we already have plans (background refresh)
+      if (plans.length === 0) {
       setLoading(true);
+      }
+      
       const [plansRes, subscriptionRes] = await Promise.all([
         api.get('/subscription-plans'),
         api.get('/subscription').catch(() => null), // May not have subscription yet
       ]);
 
-      if (plansRes.data && plansRes.data.length > 0) {
-        setPlan(plansRes.data[0]);
+      if (plansRes.data && Array.isArray(plansRes.data)) {
+        setPlans(plansRes.data);
+        // Default to first plan if none selected
+        if (!selectedPlan && plansRes.data.length > 0) {
+          setSelectedPlan(plansRes.data[0]);
+        }
+      } else if (plansRes.data && plansRes.data.length > 0) {
+        // Fallback if data is not an array but has length (legacy)
+        setPlans([plansRes.data[0]]);
+        if (!selectedPlan) setSelectedPlan(plansRes.data[0]);
       }
 
       if (subscriptionRes?.data?.subscription) {
@@ -92,8 +124,8 @@ export default function Subscribe() {
     }
   };
 
-  const handleSubscribe = async () => {
-    if (!plan || !user?.company) {
+  const handleSubscribe = async (planToSubscribe: SubscriptionPlan) => {
+    if (!planToSubscribe || !user?.company) {
       setError('Missing plan or company information');
       return;
     }
@@ -104,7 +136,7 @@ export default function Subscribe() {
       
       // Step 1: Get checkout session URL from backend
       const response = await api.post('/subscription/checkout', {
-        plan_id: plan.id,
+        plan_id: planToSubscribe.id,
       });
       
       if (!response.data.checkout_url) {
@@ -122,7 +154,7 @@ export default function Subscribe() {
     }
   };
 
-  if (loading) {
+  if (loading && plans.length === 0) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-aqua-5"></div>
@@ -139,7 +171,7 @@ export default function Subscribe() {
           subtitle="Your current subscription details"
         />
         
-        <div className="bg-white border border-line rounded-2xl p-6 shadow-sm">
+        <div className="bg-white border border-line rounded-2xl p-6 shadow-sm max-w-2xl mx-auto">
           <div className="flex items-center justify-between mb-4">
             <div>
               <h3 className="text-lg font-semibold text-ink">Active Subscription</h3>
@@ -168,7 +200,7 @@ export default function Subscribe() {
           )}
 
           <div className="mt-6">
-            <Button onClick={() => navigate('/dashboard')} variant="primary">
+            <Button onClick={() => navigate('/dashboard')} variant="primary" className="w-full sm:w-auto">
               Go to Dashboard
             </Button>
           </div>
@@ -177,12 +209,12 @@ export default function Subscribe() {
     );
   }
 
-  if (!plan) {
+  if (plans.length === 0) {
     return (
       <div className="space-y-6">
         <Topbar title="Subscription" subtitle="Subscribe to activate your account" />
         <div className="bg-white border border-line rounded-2xl p-6 shadow-sm">
-          <p className="text-muted">No subscription plan available. Please contact support.</p>
+          <p className="text-muted">No subscription plans available. Please contact support.</p>
         </div>
       </div>
     );
@@ -209,7 +241,7 @@ export default function Subscribe() {
               <h3 className="text-lg font-bold text-yellow-900 mb-2">Account Approval Complete!</h3>
               <p className="text-yellow-800 mb-4">
                 Your company <strong>{user?.company?.name}</strong> has been approved by our team. 
-                To activate your account and start using LEO24 CRM, please complete your subscription below.
+                To activate your account and start using LEO24 CRM, please select a plan below.
               </p>
             </div>
           </div>
@@ -218,7 +250,7 @@ export default function Subscribe() {
 
       <Topbar
         title="Subscribe"
-        subtitle={needsSubscription ? "Complete your subscription to activate your account" : "Manage your subscription"}
+        subtitle={needsSubscription ? "Choose a plan to activate your account" : "Manage your subscription"}
         actions={
           <button
             onClick={async () => {
@@ -267,26 +299,36 @@ export default function Subscribe() {
         </div>
       )}
 
-      <div className="bg-white border border-line rounded-2xl p-6 shadow-sm">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {plans.map((currentPlan) => (
+          <div 
+            key={currentPlan.id}
+            className={`bg-white border rounded-2xl p-6 shadow-sm flex flex-col transition-all duration-200 hover:shadow-md ${
+              selectedPlan?.id === currentPlan.id 
+                ? 'border-aqua-5 ring-2 ring-aqua-5/20' 
+                : 'border-line hover:border-aqua-3'
+            }`}
+            onClick={() => setSelectedPlan(currentPlan)}
+          >
         <div className="text-center mb-6">
-          <h2 className="text-2xl font-bold text-ink mb-2">{plan.name}</h2>
-          {plan.description && (
-            <p className="text-muted">{plan.description}</p>
+              <h2 className="text-2xl font-bold text-ink mb-2">{currentPlan.name}</h2>
+              {currentPlan.description && (
+                <p className="text-muted text-sm">{currentPlan.description}</p>
           )}
         </div>
 
         <div className="text-center mb-6">
           <div className="text-4xl font-bold text-ink mb-2">
-            €{(plan.amount / 100).toFixed(2)}
+                €{(currentPlan.amount / 100).toFixed(2)}
           </div>
-          <div className="text-muted">per {plan.interval}</div>
+              <div className="text-muted">per {currentPlan.interval}</div>
         </div>
 
-        {plan.features && plan.features.length > 0 && (
-          <div className="border-t border-line pt-6 mb-6">
-            <h3 className="font-semibold text-ink mb-4">Features included:</h3>
-            <ul className="space-y-2">
-              {plan.features.map((feature, index) => (
+            {currentPlan.features && currentPlan.features.length > 0 && (
+              <div className="border-t border-line pt-6 mb-6 flex-grow">
+                <h3 className="font-semibold text-ink mb-4 text-sm uppercase tracking-wider">Features included:</h3>
+                <ul className="space-y-3">
+                  {currentPlan.features.map((feature, index) => (
                 <li key={index} className="flex items-start">
                   <svg
                     className="w-5 h-5 text-green-500 mr-2 mt-0.5 flex-shrink-0"
@@ -301,28 +343,34 @@ export default function Subscribe() {
                       d="M5 13l4 4L19 7"
                     />
                   </svg>
-                  <span className="text-ink">{feature}</span>
+                      <span className="text-ink text-sm">{feature}</span>
                 </li>
               ))}
             </ul>
           </div>
         )}
 
-        <div className="border-t border-line pt-6">
+            <div className="border-t border-line pt-6 mt-auto">
           <Button
-            onClick={handleSubscribe}
-            isLoading={checkoutLoading}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleSubscribe(currentPlan);
+                }}
+                isLoading={checkoutLoading && selectedPlan?.id === currentPlan.id}
             variant="primary"
             className="w-full"
+                disabled={checkoutLoading}
           >
-            Subscribe Now
+                {checkoutLoading && selectedPlan?.id === currentPlan.id ? 'Processing...' : 'Subscribe Now'}
           </Button>
-          <p className="text-xs text-muted text-center mt-4">
-            You will be redirected to Stripe to complete your payment securely
-          </p>
+            </div>
         </div>
+        ))}
       </div>
+      
+      <p className="text-xs text-muted text-center mt-8">
+        Secure payment processed by Stripe. You can cancel at any time.
+      </p>
     </div>
   );
 }
-

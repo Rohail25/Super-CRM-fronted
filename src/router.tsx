@@ -3,6 +3,7 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Sales from './pages/Sales';
 import Leads from './pages/Leads';
+import EmailBulk from './pages/EmailBulk';
 import Calls from './pages/Calls';
 import Support from './pages/Support';
 import Marketing from './pages/Marketing';
@@ -71,6 +72,10 @@ export const router = createBrowserRouter([
       {
         path: 'leads',
         element: <Leads />,
+      },
+      {
+        path: 'emails',
+        element: <EmailBulk />,
       },
       {
         path: 'calls',

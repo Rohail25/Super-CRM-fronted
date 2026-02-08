@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import api from '../services/api';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
-import Modal from '../components/ui/Modal';
 
 interface Project {
   id: number;
@@ -12,7 +11,6 @@ interface Project {
 }
 
 export default function Register() {
-  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -274,7 +272,7 @@ export default function Register() {
             </div>
           </div>
 
-          {/* Project Selection */}
+          
           {projects.length > 0 && (
             <div className="pb-6">
               <h2 className="text-lg font-semibold text-ink mb-2">Select Projects (Optional)</h2>
@@ -296,7 +294,7 @@ export default function Register() {
                         }
                       `}
                     >
-                      {/* Checkmark indicator */}
+                      
                       <div className="absolute top-3 right-3">
                         {isSelected ? (
                           <div className="w-6 h-6 bg-gradient-to-br from-cyan-400 to-blue-500 rounded-full flex items-center justify-center shadow-lg">
@@ -319,7 +317,7 @@ export default function Register() {
                         )}
                       </div>
 
-                      {/* Project content */}
+                     
                       <div className="pr-8">
                         <h3 className={`font-semibold text-lg mb-2 ${isSelected ? 'text-cyan-700' : 'text-ink'}`}>
                           {project.name}
@@ -331,7 +329,7 @@ export default function Register() {
                         )}
                       </div>
 
-                      {/* Selection indicator at bottom */}
+                     
                       {isSelected && (
                         <div className="mt-3 pt-3 border-t border-cyan-200">
                           <span className="text-xs font-medium text-cyan-600 flex items-center gap-1">
@@ -351,7 +349,7 @@ export default function Register() {
                   {formData.requested_projects.length} project{formData.requested_projects.length !== 1 ? 's' : ''} selected
                 </p>
               )}
-            </div>
+              </div>
           )}
 
           <div className="flex items-center justify-between">
@@ -367,4 +365,3 @@ export default function Register() {
     </div>
   );
 }
-

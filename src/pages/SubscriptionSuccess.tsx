@@ -47,9 +47,9 @@ export default function SubscriptionSuccess() {
         // Refresh auth data to get updated subscription status
         await checkAuth();
         
-        // Immediately redirect back to subscription page with success message
+        // Immediately redirect back to DASHBOARD page as requested
         const successMessage = response.data.message || 'Subscription activated successfully';
-        navigate('/subscribe?success=true&message=' + encodeURIComponent(successMessage), { replace: true });
+        navigate('/dashboard?success=true&message=' + encodeURIComponent(successMessage), { replace: true });
         return; // Exit early to prevent further execution
       } else {
         // Fallback: try activate endpoint if success endpoint didn't work
@@ -68,9 +68,9 @@ export default function SubscriptionSuccess() {
           
           console.log('✅ Subscription activated via fallback:', activateResponse.data);
           await checkAuth();
-          // Immediately redirect back to subscription page with success message
+          // Immediately redirect back to DASHBOARD page
           const successMessage = activateResponse.data.message || 'Subscription activated successfully';
-          navigate('/subscribe?success=true&message=' + encodeURIComponent(successMessage), { replace: true });
+          navigate('/dashboard?success=true&message=' + encodeURIComponent(successMessage), { replace: true });
           return; // Exit early
         } else {
           setError('Subscription activated but missing redirect information');
@@ -151,18 +151,17 @@ export default function SubscriptionSuccess() {
           Your payment has been processed successfully and your subscription has been saved to the database.
         </p>
         <p className="text-sm text-muted mb-6">
-          Redirecting you back to the subscription page...
+          Redirecting you to dashboard...
         </p>
         <Button 
           onClick={() => {
-            navigate('/subscribe?success=true&message=' + encodeURIComponent('Subscription activated successfully'), { replace: true });
+            navigate('/dashboard?success=true&message=' + encodeURIComponent('Subscription activated successfully'), { replace: true });
           }} 
           variant="primary"
         >
-          Continue to Subscription Page
+          Go to Dashboard
         </Button>
       </div>
     </div>
   );
 }
-
