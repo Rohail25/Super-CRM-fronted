@@ -21,7 +21,6 @@ export default function SubscriptionSuccess() {
   }, [sessionId]);
 
   const checkAuth = useAuthStore((state) => state.checkAuth);
-  const setUser = useAuthStore((state) => state.setUser);
 
   const verifySession = async () => {
     try {

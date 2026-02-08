@@ -86,7 +86,7 @@ export default function Marketing() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingCampaign, setEditingCampaign] = useState<Campaign | null>(null);
-  const [projects, setProjects] = useState<Project[]>([]);
+  const [_projects, setProjects] = useState<Project[]>([]);
   const [paymentSuccess, setPaymentSuccess] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     name: '',
@@ -369,7 +369,7 @@ export default function Marketing() {
       const response = await api.post(`/campaigns/${campaign.id}/payment/checkout`);
       console.log('Payment checkout response:', response.data);
       
-      const { checkout_url, session_id } = response.data;
+      const { checkout_url } = response.data;
 
       // Validate checkout URL
       if (!checkout_url) {
@@ -867,7 +867,7 @@ export default function Marketing() {
                     className="w-full px-3 py-2 border border-line rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-aqua-5/20"
                   >
                     <option value="">No Project</option>
-                    {projects.map((project) => (
+                    {_projects.map((project) => (
                       <option key={project.id} value={project.id}>
                         {project.name}
                       </option>

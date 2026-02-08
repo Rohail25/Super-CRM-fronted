@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { handleApiError, getErrorMessage } from '../utils/errorHandler';
+import { getErrorMessage } from '../utils/errorHandler';
 
 interface UseApiOptions {
   onSuccess?: (data: any) => void;

@@ -1,5 +1,4 @@
 import { useEffect, useState, useRef } from 'react';
-import { useTranslation } from 'react-i18next';
 import Topbar from '../components/layout/Topbar';
 import api from '../services/api';
 import Modal from '../components/ui/Modal';
@@ -32,7 +31,6 @@ const categories = [
 ];
 
 export default function EmailBulk() {
-  const { t } = useTranslation();
   const [emails, setEmails] = useState<EmailRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({

@@ -87,7 +87,7 @@ interface ArticleFormData {
   status: 'DRAFT' | 'PUBLISHED';
   isBreaking: boolean;
   tags: string;
-  mainImage: string;
+  mainImage: string | File;
 }
 
 export default function TGCalabriaProject() {
@@ -101,7 +101,6 @@ export default function TGCalabriaProject() {
   const [stats, setStats] = useState<TGCalabriaStats | null>(null);
   const [news, setNews] = useState<News[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [token, setToken] = useState<string | null>(null);
   const [showArticleModal, setShowArticleModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -175,8 +174,8 @@ export default function TGCalabriaProject() {
       try {
         const [statsResponse, newsResponse, categoriesResponse] = await Promise.all([
           api.get(`/projects/${projectId}/tg-calabria/news/stats`),
-          api.get(`/projects/${projectId}/tg-calabria/news`).catch(err => ({ data: { data: [] } })),
-          api.get(`/projects/${projectId}/tg-calabria/categories`).catch(err => ({ data: { data: [] } })),
+          api.get(`/projects/${projectId}/tg-calabria/news`).catch(() => ({ data: { data: [] } })),
+          api.get(`/projects/${projectId}/tg-calabria/categories`).catch(() => ({ data: { data: [] } })),
         ]);
 
         // Process stats data
@@ -295,8 +294,9 @@ export default function TGCalabriaProject() {
           }
           const file = new File([u8arr], 'article-image', { type: mime });
           formDataObj.append('mainImage', file);
-        } else if (formData.mainImage instanceof File) {
-          formDataObj.append('mainImage', formData.mainImage);
+        } else if (typeof formData.mainImage !== 'string') {
+          // If it's not a string, it must be a File
+          formDataObj.append('mainImage', formData.mainImage as File);
         }
       }
 
@@ -735,7 +735,13 @@ export default function TGCalabriaProject() {
                 />
                 {formData.mainImage && (
                   <div className="mt-2">
-                    <img src={formData.mainImage} alt="Preview" className="max-h-32 rounded-lg object-cover" />
+                    <img 
+                      src={typeof formData.mainImage === 'string' 
+                        ? formData.mainImage 
+                        : URL.createObjectURL(formData.mainImage)} 
+                      alt="Preview" 
+                      className="max-h-32 rounded-lg object-cover" 
+                    />
                   </div>
                 )}
               </div>

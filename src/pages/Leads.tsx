@@ -52,7 +52,6 @@ export default function Leads() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
   const [viewingLead, setViewingLead] = useState<Lead | null>(null);
-  const [editingLead, setEditingLead] = useState<Lead | null>(null);
   
   // New state for file upload form
   const [uploadFormData, setUploadFormData] = useState({
@@ -68,7 +67,7 @@ export default function Leads() {
   const [whatsAppSending, setWhatsAppSending] = useState(false);
   const [selectedLeadId, setSelectedLeadId] = useState<number | null>(null);
   const [followUps, setFollowUps] = useState<Record<number, FollowUp[]>>({});
-  const [editingFollowUp, setEditingFollowUp] = useState<FollowUp | null>(null);
+  const [_editingFollowUp, setEditingFollowUp] = useState<FollowUp | null>(null);
   const [followUpFormData, setFollowUpFormData] = useState({
     title: '',
     notes: '',
@@ -172,29 +171,6 @@ export default function Leads() {
     }
   };
 
-  // Only used for editing existing leads now
-  const handleUpdateLead = async () => {
-    if (!editingLead) return;
-
-    try {
-      // Basic update logic - expand as needed if editing individual fields is required
-      // For now, we might just allow status updates or simple text fields if implemented in backend
-      // But the requirement was to remove manual form for creation.
-      // Assuming update is still relevant for status/category changes.
-      
-      const payload: any = {
-          // Add fields here if editing is allowed
-      };
-
-      await api.put(`/leads/${editingLead.id}`, payload);
-      setEditingLead(null);
-      fetchLeads();
-    } catch (error) {
-      console.error('Failed to update lead:', error);
-      alert('Failed to update lead. Please try again.');
-    }
-  };
-
   const handleDeleteLead = async (leadId: number) => {
     if (!confirm(t('leads.deleteConfirm'))) {
       return;
@@ -218,11 +194,6 @@ export default function Leads() {
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
-  };
-
-  const openEditModal = (lead: Lead) => {
-    setEditingLead(lead);
-    // Populate edit form data if needed
   };
 
   const clearFilters = () => {
@@ -424,8 +395,6 @@ export default function Leads() {
     return colors[priority] || 'text-ink';
   };
 
-  // Get unique sources from leads for filter dropdown
-  const uniqueSources = Array.from(new Set(leads.map(lead => lead.source).filter(Boolean))).sort();
 
   const getStatusBadge = (status: string) => {
     const styles = {

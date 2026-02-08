@@ -73,7 +73,7 @@ export default function Layout() {
                             location.pathname.startsWith('/subscription');
   
   // Check if we're on doctor or TG Calabria project page (show icon-only sidebar for all users)
-  const isProjectIframe = (location.pathname.match(/^\/projects\/\d+\/doctor$/) ||
+  const isProjectIframe = !!(location.pathname.match(/^\/projects\/\d+\/doctor$/) ||
                            location.pathname.match(/^\/projects\/\d+\/tg-calabria$/));
 
   return (
