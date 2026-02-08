@@ -7,18 +7,6 @@ import Topbar from '../components/layout/Topbar';
 import { useAuthStore } from '../stores/authStore';
 import type { Project } from '../types/project.types';
 
-interface ProjectAccess {
-  id: number;
-  company_id: number;
-  project_id: number;
-  status: string;
-  project: Project;
-  company: {
-    id: number;
-    name: string;
-  };
-}
-
 interface Credential {
   id: number;
   email: string;
@@ -39,7 +27,6 @@ export default function Projects() {
   const [showCredentialsModal, setShowCredentialsModal] = useState(false);
   const [credentials, setCredentials] = useState<Credential[]>([]);
   const [selectedProjectForCredentials, setSelectedProjectForCredentials] = useState<Project | null>(null);
-  const [credentialsLoading, setCredentialsLoading] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     slug: '',
@@ -122,7 +109,6 @@ export default function Projects() {
 
   const handleShowCredentials = async (projectId: number) => {
     try {
-      setCredentialsLoading(true);
       const project = projects.find(p => p.id === projectId);
       
       if (!project) {
@@ -136,7 +122,7 @@ export default function Projects() {
 
       const credentialsData = Array.isArray(response.data)
         ? response.data
-        : response.data?.data || [];
+        : (response.data as any)?.data || [];
 
       setCredentials(credentialsData);
       setSelectedProjectForCredentials(project);
@@ -144,8 +130,6 @@ export default function Projects() {
     } catch (error: any) {
       console.error('Failed to fetch credentials:', error);
       alert(error.response?.data?.message || 'Failed to load credentials. Please try again.');
-    } finally {
-      setCredentialsLoading(false);
     }
   };
 

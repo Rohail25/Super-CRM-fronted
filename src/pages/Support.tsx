@@ -25,6 +25,7 @@ interface SupportTicket {
   status: 'open' | 'in_progress' | 'waiting_customer' | 'resolved' | 'closed';
   priority: 'low' | 'medium' | 'high' | 'urgent';
   type: 'technical' | 'billing' | 'feature_request' | 'bug' | 'other';
+  company_id: number | null;
   customer_id: number | null;
   customer: Customer | null;
   assigned_to: number | null;
@@ -284,6 +285,7 @@ export default function Support() {
       priority: ticket.priority,
       type: ticket.type,
       status: ticket.status,
+      company_id: ticket.company_id ? String(ticket.company_id) : '',
       customer_id: ticket.customer_id ? String(ticket.customer_id) : '',
       customer_name: ticket.customer_name || '',
       customer_email: ticket.customer_email || '',

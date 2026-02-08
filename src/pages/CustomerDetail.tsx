@@ -15,7 +15,7 @@ interface Customer {
   last_name: string | null;
   vat: string | null;
   address: string | null;
-  notes: string | null;
+  notes_text: string | null;
   created_at: string;
   updated_at: string;
   opportunities?: Opportunity[];
@@ -162,7 +162,7 @@ export default function CustomerDetail() {
           last_name: data.customer.last_name || '',
           vat: data.customer.vat || '',
           address: data.customer.address || '',
-          notes: data.customer.notes || '',
+          notes: data.customer.notes_text || '',
         });
       }
     } catch (error) {
@@ -437,10 +437,10 @@ export default function CustomerDetail() {
                       <div className="text-sm text-muted">Last Updated</div>
                       <div className="text-ink">{formatDateTime(customer.updated_at)}</div>
                     </div>
-                    {customer.notes && (
+                    {customer.notes_text && (
                       <div>
                         <div className="text-sm text-muted">Notes</div>
-                        <div className="text-ink whitespace-pre-wrap">{customer.notes}</div>
+                        <div className="text-ink whitespace-pre-wrap">{customer.notes_text}</div>
                       </div>
                     )}
                   </div>
@@ -544,7 +544,7 @@ export default function CustomerDetail() {
                   + New Note
                 </Button>
               </div>
-              {customer.notes && customer.notes.length > 0 ? (
+              {customer.notes && Array.isArray(customer.notes) && customer.notes.length > 0 ? (
                 <div className="space-y-3">
                   {customer.notes.map((note) => (
                     <div key={note.id} className="border border-line rounded-lg p-4 hover:bg-aqua-1/10 transition-colors">
