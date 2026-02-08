@@ -1,8 +1,11 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../stores/authStore';
+import LanguageSwitcher from '../components/LanguageSwitcher';
 
 export default function Login() {
+  const { t } = useTranslation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -47,10 +50,11 @@ export default function Login() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-aqua-2 to-aqua-1">
+      <LanguageSwitcher />
       <div className="bg-card p-8 rounded-2xl shadow-lg border border-line w-full max-w-md">
         <div className="text-center mb-8">
           <h1 className="text-2xl font-bold text-ink mb-2">LEO24 CRM</h1>
-          <p className="text-muted">Sign in to your account</p>
+          <p className="text-muted">{t('login.title')}</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -62,7 +66,7 @@ export default function Login() {
 
           <div>
             <label htmlFor="email" className="block text-sm font-medium text-ink mb-1">
-              Email
+              {t('login.email')}
             </label>
             <input
               id="email"
@@ -76,7 +80,7 @@ export default function Login() {
 
           <div>
             <label htmlFor="password" className="block text-sm font-medium text-ink mb-1">
-              Password
+              {t('login.password')}
             </label>
             <input
               id="password"
@@ -93,7 +97,7 @@ export default function Login() {
             disabled={loading}
             className="w-full bg-aqua-5 text-white py-2 px-4 rounded-lg font-medium hover:bg-aqua-4 transition-colors disabled:opacity-50"
           >
-            {loading ? 'Signing in...' : 'Sign in'}
+            {loading ? t('login.signingIn', 'Signing in...') : t('login.signIn')}
           </button>
 
           <div className="text-center mt-4">
@@ -101,7 +105,7 @@ export default function Login() {
               to="/register"
               className="text-cyan-500 hover:text-cyan-600 text-sm"
             >
-              Don't have an account? Register your company
+              {t('login.dontHaveAccount')} {t('login.signUp')}
             </Link>
           </div>
         </form>

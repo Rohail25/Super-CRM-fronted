@@ -1,14 +1,22 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import Topbar from '../components/layout/Topbar';
 import api from '../services/api';
+import Modal from '../components/ui/Modal';
 
 interface Lead {
   id: number;
   name: string;
-  email: string;
-  phone: string;
-  source: string;
+  email?: string;
+  phone?: string;
+  source?: string;
   status: string;
+  category?: string;
+  file_name?: string;
+  file_format?: string;
+  file_headers?: string[];
+  file_records?: any[][];
   value?: number;
   created_at: string;
   assigned_to?: string;
@@ -31,25 +39,33 @@ interface FollowUp {
 }
 
 export default function Leads() {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({
     status: 'all',
     source: 'all',
+    category: 'all',
     search: '',
   });
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showViewModal, setShowViewModal] = useState(false);
+  const [viewingLead, setViewingLead] = useState<Lead | null>(null);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
-  const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    phone: '',
-    source: '',
-    status: 'cold',
-    value: '',
-    assigned_to: '',
+  
+  // New state for file upload form
+  const [uploadFormData, setUploadFormData] = useState({
+    file: null as File | null,
+    format: 'csv',
+    category: '',
   });
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const [showFollowUpModal, setShowFollowUpModal] = useState(false);
+  const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
+  const [whatsAppMessage, setWhatsAppMessage] = useState('');
+  const [whatsAppSending, setWhatsAppSending] = useState(false);
   const [selectedLeadId, setSelectedLeadId] = useState<number | null>(null);
   const [followUps, setFollowUps] = useState<Record<number, FollowUp[]>>({});
   const [editingFollowUp, setEditingFollowUp] = useState<FollowUp | null>(null);
@@ -62,6 +78,17 @@ export default function Leads() {
     outcome: '',
   });
 
+  const categories = [
+    'Hotel',
+    'B&B',
+    'Farmacia',
+    'Oculista',
+    'Ortopedico',
+    'Aziende vinicole',
+    'Salumificio',
+    'Doctors, baby hotel, etc.'
+  ];
+
   // Debounce search
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -73,7 +100,7 @@ export default function Leads() {
 
   useEffect(() => {
     fetchLeads();
-  }, [filters.status, filters.source]);
+  }, [filters.status, filters.source, filters.category]);
 
   const fetchLeads = async () => {
     try {
@@ -86,6 +113,10 @@ export default function Leads() {
       
       if (filters.source !== 'all') {
         params.source = filters.source;
+      }
+
+      if (filters.category !== 'all') {
+        params.category = filters.category;
       }
       
       if (filters.search) {
@@ -102,76 +133,61 @@ export default function Leads() {
     }
   };
 
-  const handleCreateLead = async () => {
+  const handleFileUpload = async () => {
     try {
-      // Validate required fields
-      if (!formData.name || !formData.email || !formData.phone) {
-        alert('Please fill in all required fields (Name, Email, Phone)');
+      if (!uploadFormData.file) {
+        alert(t('leads.selectFile') + ' ' + t('common.required', 'required'));
+        return;
+      }
+      if (!uploadFormData.category) {
+        alert(t('leads.selectCategory'));
         return;
       }
 
-      const payload: any = {
-        name: formData.name,
-        email: formData.email,
-        phone: formData.phone,
-        status: formData.status,
-      };
+      const formData = new FormData();
+      formData.append('file', uploadFormData.file);
+      formData.append('format', uploadFormData.format);
+      formData.append('category', uploadFormData.category);
 
-      if (formData.source) {
-        payload.source = formData.source;
-      }
+      const response = await api.post('/leads', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
 
-      if (formData.value) {
-        payload.value = parseFloat(formData.value);
-      }
-
-      const response = await api.post('/leads', payload);
-      console.log('Lead created successfully:', response.data);
+      console.log('Lead file uploaded successfully:', response.data);
       
       setShowCreateModal(false);
-      resetForm();
+      resetUploadForm();
       await fetchLeads(); // Refresh the list
       
-      // Show success message
-      alert('Lead created successfully!');
+      alert(t('leads.uploadSuccess'));
     } catch (error: any) {
-      console.error('Failed to create lead:', error);
+      console.error('Failed to upload lead file:', error);
       const errorMessage = error.response?.data?.message || 
                           error.response?.data?.error || 
                           error.message || 
-                          'Failed to create lead. Please try again.';
+                          'Failed to upload lead file. Please try again.';
       alert(`Error: ${errorMessage}`);
     }
   };
 
+  // Only used for editing existing leads now
   const handleUpdateLead = async () => {
     if (!editingLead) return;
 
     try {
-      const payload: any = {};
-
-      if (formData.name !== editingLead.name) {
-        payload.name = formData.name;
-      }
-      if (formData.email !== editingLead.email) {
-        payload.email = formData.email;
-      }
-      if (formData.phone !== editingLead.phone) {
-        payload.phone = formData.phone;
-      }
-      if (formData.status !== editingLead.status) {
-        payload.status = formData.status;
-      }
-      if (formData.source !== editingLead.source) {
-        payload.source = formData.source;
-      }
-      if (formData.value !== String(editingLead.value || '')) {
-        payload.value = formData.value ? parseFloat(formData.value) : null;
-      }
+      // Basic update logic - expand as needed if editing individual fields is required
+      // For now, we might just allow status updates or simple text fields if implemented in backend
+      // But the requirement was to remove manual form for creation.
+      // Assuming update is still relevant for status/category changes.
+      
+      const payload: any = {
+          // Add fields here if editing is allowed
+      };
 
       await api.put(`/leads/${editingLead.id}`, payload);
       setEditingLead(null);
-      resetForm();
       fetchLeads();
     } catch (error) {
       console.error('Failed to update lead:', error);
@@ -180,7 +196,7 @@ export default function Leads() {
   };
 
   const handleDeleteLead = async (leadId: number) => {
-    if (!confirm('Are you sure you want to delete this lead?')) {
+    if (!confirm(t('leads.deleteConfirm'))) {
       return;
     }
 
@@ -193,42 +209,34 @@ export default function Leads() {
     }
   };
 
-  const resetForm = () => {
-    setFormData({
-      name: '',
-      email: '',
-      phone: '',
-      source: '',
-      status: 'cold',
-      value: '',
-      assigned_to: '',
+  const resetUploadForm = () => {
+    setUploadFormData({
+      file: null,
+      format: 'csv',
+      category: '',
     });
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   };
 
   const openEditModal = (lead: Lead) => {
     setEditingLead(lead);
-    setFormData({
-      name: lead.name,
-      email: lead.email,
-      phone: lead.phone,
-      source: lead.source,
-      status: lead.status,
-      value: lead.value ? String(lead.value) : '',
-      assigned_to: lead.assigned_to || '',
-    });
+    // Populate edit form data if needed
   };
 
   const clearFilters = () => {
     setFilters({
       status: 'all',
       source: 'all',
+      category: 'all',
       search: '',
     });
   };
 
   const fetchFollowUps = async (leadId: number) => {
     try {
-      const response = await api.get(`/customers/${leadId}/follow-ups`);
+      const response = await api.get(`/leads/${leadId}/follow-ups`);
       setFollowUps(prev => ({ ...prev, [leadId]: response.data }));
     } catch (error) {
       console.error('Failed to fetch follow-ups:', error);
@@ -252,7 +260,7 @@ export default function Leads() {
         scheduled_at: followUpFormData.scheduled_at,
       };
 
-      await api.post(`/customers/${selectedLeadId}/follow-ups`, payload);
+      await api.post(`/leads/${selectedLeadId}/follow-ups`, payload);
       setShowFollowUpModal(false);
       resetFollowUpForm();
       await fetchFollowUps(selectedLeadId);
@@ -340,6 +348,42 @@ export default function Leads() {
     }
   };
 
+  const openWhatsAppModal = (leadId: number) => {
+    setSelectedLeadId(leadId);
+    setWhatsAppMessage('');
+    setShowWhatsAppModal(true);
+  };
+
+  const handleSendWhatsApp = async () => {
+    if (!selectedLeadId || !whatsAppMessage.trim()) {
+      alert('Please enter a message');
+      return;
+    }
+
+    const lead = leads.find(l => l.id === selectedLeadId);
+    if (!lead || !lead.phone) {
+      alert('Lead not found or missing phone number');
+      return;
+    }
+
+    try {
+      setWhatsAppSending(true);
+      await api.post('/communications/whatsapp/send', {
+        to: lead.phone,
+        message: whatsAppMessage,
+      });
+      
+      alert('WhatsApp message sent successfully!');
+      setShowWhatsAppModal(false);
+      setWhatsAppMessage('');
+    } catch (error: any) {
+      console.error('Failed to send WhatsApp message:', error);
+      alert(error.response?.data?.message || 'Failed to send WhatsApp message. Please check Twilio configuration.');
+    } finally {
+      setWhatsAppSending(false);
+    }
+  };
+
   const resetFollowUpForm = () => {
     setFollowUpFormData({
       title: '',
@@ -404,18 +448,24 @@ export default function Leads() {
   return (
     <div className="space-y-6">
       <Topbar
-        title="Leads Management"
-        subtitle="Manage and track all your leads from different sources"
+        title={t('leads.title')}
+        subtitle={t('leads.title')}
         actions={
           <>
             <button className="px-4 py-2 text-sm border border-line rounded-xl hover:bg-aqua-1/30 transition-colors text-ink font-medium">
-              Export
+              {t('common.export', 'Export')}
+            </button>
+            <button 
+              onClick={() => navigate('/emails')}
+              className="px-4 py-2 text-sm border border-purple-5/35 bg-gradient-to-r from-purple-3/45 to-purple-5/14 rounded-xl hover:shadow-lg hover:shadow-purple-5/10 transition-all text-ink font-semibold"
+            >
+              📧 Email Bulk
             </button>
             <button 
               onClick={() => setShowCreateModal(true)}
               className="px-4 py-2 text-sm border border-aqua-5/35 bg-gradient-to-r from-aqua-3/45 to-aqua-5/14 rounded-xl hover:shadow-lg hover:shadow-aqua-5/10 transition-all text-ink font-semibold"
             >
-              ➕ New Lead
+              ➕ {t('leads.uploadFile')}
             </button>
           </>
         }
@@ -426,7 +476,7 @@ export default function Leads() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <input
             type="text"
-            placeholder="Search leads..."
+            placeholder={t('common.search') + '...'}
             value={filters.search}
             onChange={(e) => setFilters({ ...filters, search: e.target.value })}
             className="px-4 py-2 border border-line rounded-xl focus:border-aqua-5 focus:ring-2 focus:ring-aqua-5/20 outline-none text-sm"
@@ -436,29 +486,27 @@ export default function Leads() {
             onChange={(e) => setFilters({ ...filters, status: e.target.value })}
             className="px-4 py-2 border border-line rounded-xl focus:border-aqua-5 focus:ring-2 focus:ring-aqua-5/20 outline-none text-sm"
           >
-            <option value="all">All Status</option>
-            <option value="hot">Hot</option>
-            <option value="warm">Warm</option>
-            <option value="cold">Cold</option>
-            <option value="converted">Converted</option>
+            <option value="all">{t('common.all')} {t('common.status')}</option>
+            <option value="hot">{t('leads.hot')}</option>
+            <option value="warm">{t('leads.warm')}</option>
+            <option value="cold">{t('leads.cold')}</option>
+            <option value="converted">{t('leads.converted')}</option>
           </select>
           <select
-            value={filters.source}
-            onChange={(e) => setFilters({ ...filters, source: e.target.value })}
+            value={filters.category}
+            onChange={(e) => setFilters({ ...filters, category: e.target.value })}
             className="px-4 py-2 border border-line rounded-xl focus:border-aqua-5 focus:ring-2 focus:ring-aqua-5/20 outline-none text-sm"
           >
-            <option value="all">All Sources</option>
-            {uniqueSources.map((source) => (
-              <option key={source} value={source}>
-                {source}
-              </option>
+            <option value="all">{t('common.all')} {t('common.category')}</option>
+            {categories.map((cat) => (
+              <option key={cat} value={cat}>{cat}</option>
             ))}
           </select>
           <button 
             onClick={clearFilters}
             className="px-4 py-2 text-sm border border-line rounded-xl hover:bg-aqua-1/30 transition-colors text-ink font-medium"
           >
-            Clear Filters
+            {t('common.clearFilters', 'Clear Filters')}
           </button>
         </div>
       </div>
@@ -469,39 +517,38 @@ export default function Leads() {
           <table className="w-full">
             <thead className="bg-aqua-1/30 border-b border-line">
               <tr>
-                <th className="text-left text-xs font-bold text-muted uppercase py-3 px-4">Lead</th>
-                <th className="text-left text-xs font-bold text-muted uppercase py-3 px-4">Contact</th>
-                <th className="text-left text-xs font-bold text-muted uppercase py-3 px-4">Source</th>
-                <th className="text-left text-xs font-bold text-muted uppercase py-3 px-4">Status</th>
-                <th className="text-right text-xs font-bold text-muted uppercase py-3 px-4">Value</th>
-                <th className="text-left text-xs font-bold text-muted uppercase py-3 px-4">Assigned To</th>
-                <th className="text-left text-xs font-bold text-muted uppercase py-3 px-4">Created</th>
-                <th className="text-right text-xs font-bold text-muted uppercase py-3 px-4">Actions</th>
+                <th className="text-left text-xs font-bold text-muted uppercase py-3 px-4">{t('leads.fileName')}</th>
+                <th className="text-left text-xs font-bold text-muted uppercase py-3 px-4">{t('leads.fileFormatLabel')}</th>
+                <th className="text-left text-xs font-bold text-muted uppercase py-3 px-4">{t('common.category')}</th>
+                <th className="text-left text-xs font-bold text-muted uppercase py-3 px-4">{t('leads.fileRecords')}</th>
+                <th className="text-left text-xs font-bold text-muted uppercase py-3 px-4">{t('common.status')}</th>
+                <th className="text-left text-xs font-bold text-muted uppercase py-3 px-4">{t('leads.createdAt')}</th>
+                <th className="text-right text-xs font-bold text-muted uppercase py-3 px-4">{t('common.actions')}</th>
               </tr>
             </thead>
             <tbody>
               {leads.map((lead) => (
                 <tr key={lead.id} className="border-b border-line/50 hover:bg-aqua-1/10 transition-colors">
                   <td className="py-3 px-4">
-                    <div className="font-semibold text-ink">{lead.name}</div>
+                    <div className="font-semibold text-ink">{lead.file_name || lead.name}</div>
                   </td>
                   <td className="py-3 px-4">
-                    <div className="text-sm text-ink">{lead.email}</div>
-                    <div className="text-xs text-muted">{lead.phone}</div>
+                    <span className="text-xs px-2 py-1 bg-aqua-1/30 text-ink rounded font-medium">
+                      {lead.file_format?.toUpperCase() || '-'}
+                    </span>
                   </td>
                   <td className="py-3 px-4">
-                    <span className="text-sm text-ink">{lead.source}</span>
+                    <span className="text-sm text-ink">{lead.category || '-'}</span>
+                  </td>
+                  <td className="py-3 px-4">
+                    <span className="text-sm text-ink font-medium">
+                      {lead.file_records?.length || 0} rows
+                    </span>
                   </td>
                   <td className="py-3 px-4">
                     <span className={`text-xs px-2 py-1 rounded-full border font-medium ${getStatusBadge(lead.status)}`}>
                       {lead.status}
                     </span>
-                  </td>
-                  <td className="py-3 px-4 text-right">
-                    {lead.value ? <span className="font-semibold text-ink">€ {lead.value.toLocaleString()}</span> : '-'}
-                  </td>
-                  <td className="py-3 px-4">
-                    <span className="text-sm text-muted">{lead.assigned_to || 'Unassigned'}</span>
                   </td>
                   <td className="py-3 px-4">
                     <span className="text-sm text-muted">{new Date(lead.created_at).toLocaleDateString()}</span>
@@ -509,27 +556,39 @@ export default function Leads() {
                   <td className="py-3 px-4">
                     <div className="flex items-center justify-end gap-2">
                       {lead.phone && (
-                        <button 
-                          onClick={() => handleStartCall(null, lead.id)}
-                          className="p-1.5 hover:bg-blue-100 rounded-lg transition-colors text-blue-600" 
-                          title="Start Call Now"
-                        >
-                          📞
-                        </button>
+                        <>
+                          <button 
+                            onClick={() => handleStartCall(null, lead.id)}
+                            className="p-1.5 hover:bg-blue-100 rounded-lg transition-colors text-blue-600" 
+                            title="Start Call Now"
+                          >
+                            📞
+                          </button>
+                          <button 
+                            onClick={() => openWhatsAppModal(lead.id)}
+                            className="p-1.5 hover:bg-green-100 rounded-lg transition-colors text-green-600" 
+                            title="Send WhatsApp"
+                          >
+                            💬
+                          </button>
+                        </>
                       )}
+                      <button 
+                        onClick={() => {
+                          setViewingLead(lead);
+                          setShowViewModal(true);
+                        }}
+                        className="p-1.5 hover:bg-aqua-1 rounded-lg transition-colors" 
+                        title="View Details"
+                      >
+                        👁️
+                      </button>
                       <button 
                         onClick={() => openFollowUpModal(lead.id)}
                         className="p-1.5 hover:bg-aqua-1 rounded-lg transition-colors" 
                         title="Follow-ups"
                       >
                         📅
-                      </button>
-                      <button 
-                        onClick={() => openEditModal(lead)}
-                        className="p-1.5 hover:bg-aqua-1 rounded-lg transition-colors" 
-                        title="Edit"
-                      >
-                        ✏️
                       </button>
                       <button 
                         onClick={() => handleDeleteLead(lead.id)}
@@ -547,88 +606,64 @@ export default function Leads() {
         </div>
         {leads.length === 0 && !loading && (
           <div className="p-8 text-center text-muted">
-            No leads found. Create your first lead to get started!
+            {t('leads.noLeadsFound')}
           </div>
         )}
       </div>
 
-      {/* Create/Edit Modal */}
-      {(showCreateModal || editingLead) && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md mx-4">
-            <h2 className="text-xl font-bold text-ink mb-4">
-              {editingLead ? 'Edit Lead' : 'Create New Lead'}
-            </h2>
-            
+      {/* Upload Modal */}
+      {(showCreateModal) && (
+        <Modal
+          isOpen={true}
+          title={t('leads.fileUpload')}
+          onClose={() => {
+            setShowCreateModal(false);
+            resetUploadForm();
+          }}
+        >
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-ink mb-1">Name *</label>
-                <input
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full px-4 py-2 border border-line rounded-xl focus:border-aqua-5 focus:ring-2 focus:ring-aqua-5/20 outline-none"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-ink mb-1">Email *</label>
-                <input
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  className="w-full px-4 py-2 border border-line rounded-xl focus:border-aqua-5 focus:ring-2 focus:ring-aqua-5/20 outline-none"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-ink mb-1">Phone *</label>
-                <input
-                  type="tel"
-                  value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  className="w-full px-4 py-2 border border-line rounded-xl focus:border-aqua-5 focus:ring-2 focus:ring-aqua-5/20 outline-none"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-ink mb-1">Source</label>
-                <input
-                  type="text"
-                  value={formData.source}
-                  onChange={(e) => setFormData({ ...formData, source: e.target.value })}
-                  placeholder="e.g., OptyShop, Aziende TG Calabria"
-                  className="w-full px-4 py-2 border border-line rounded-xl focus:border-aqua-5 focus:ring-2 focus:ring-aqua-5/20 outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-ink mb-1">Status</label>
+                <label className="block text-sm font-medium text-ink mb-1">{t('leads.fileFormat')} *</label>
                 <select
-                  value={formData.status}
-                  onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                  value={uploadFormData.format}
+                  onChange={(e) => setUploadFormData({ ...uploadFormData, format: e.target.value })}
                   className="w-full px-4 py-2 border border-line rounded-xl focus:border-aqua-5 focus:ring-2 focus:ring-aqua-5/20 outline-none"
                 >
-                  <option value="hot">Hot</option>
-                  <option value="warm">Warm</option>
-                  <option value="cold">Cold</option>
-                  <option value="converted">Converted</option>
+                  <option value="csv">{t('leads.csv')}</option>
+                  <option value="excel">{t('leads.excel')}</option>
                 </select>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-ink mb-1">Value (€)</label>
+                <label className="block text-sm font-medium text-ink mb-1">{t('common.category')} *</label>
+                <select
+                  value={uploadFormData.category}
+                  onChange={(e) => setUploadFormData({ ...uploadFormData, category: e.target.value })}
+                  className="w-full px-4 py-2 border border-line rounded-xl focus:border-aqua-5 focus:ring-2 focus:ring-aqua-5/20 outline-none"
+                >
+                  <option value="">{t('leads.selectCategory')}</option>
+                  {categories.map((cat) => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-ink mb-1">{t('leads.selectFile')} *</label>
                 <input
-                  type="number"
-                  value={formData.value}
-                  onChange={(e) => setFormData({ ...formData, value: e.target.value })}
-                  placeholder="0.00"
-                  step="0.01"
+                  type="file"
+                  ref={fileInputRef}
+                  accept=".csv,.txt,.xlsx,.xls"
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files[0]) {
+                        setUploadFormData({ ...uploadFormData, file: e.target.files[0] });
+                    }
+                  }}
                   className="w-full px-4 py-2 border border-line rounded-xl focus:border-aqua-5 focus:ring-2 focus:ring-aqua-5/20 outline-none"
                 />
+                <p className="text-xs text-muted mt-1">
+                    {t('leads.fileUploadHint', 'First row must be headers. Supported formats: CSV, Excel (.xlsx, .xls)')}
+                </p>
               </div>
             </div>
 
@@ -636,41 +671,162 @@ export default function Leads() {
               <button
                 onClick={() => {
                   setShowCreateModal(false);
-                  setEditingLead(null);
-                  resetForm();
+                  resetUploadForm();
+                }}
+                className="flex-1 px-4 py-2 border border-line rounded-xl hover:bg-aqua-1/30 transition-colors text-ink font-medium"
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                onClick={handleFileUpload}
+                disabled={!uploadFormData.file || !uploadFormData.category}
+                className="flex-1 px-4 py-2 bg-aqua-5 text-white rounded-xl hover:bg-aqua-4 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {t('leads.upload')}
+              </button>
+            </div>
+        </Modal>
+      )}
+
+      {/* View Lead Details Modal */}
+      {showViewModal && viewingLead && (
+        <Modal
+          isOpen={true}
+          title={`Lead Details: ${viewingLead.file_name || viewingLead.name}`}
+          onClose={() => {
+            setShowViewModal(false);
+            setViewingLead(null);
+          }}
+        >
+          <div className="space-y-4 max-h-[70vh] overflow-y-auto">
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div>
+                <label className="block text-xs font-medium text-muted mb-1">Category</label>
+                <p className="text-sm text-ink">{viewingLead.category || '-'}</p>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-muted mb-1">Status</label>
+                <span className={`text-xs px-2 py-1 rounded-full border font-medium ${getStatusBadge(viewingLead.status)}`}>
+                  {viewingLead.status}
+                </span>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-muted mb-1">File Format</label>
+                <p className="text-sm text-ink">{viewingLead.file_format?.toUpperCase() || '-'}</p>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-muted mb-1">Records Count</label>
+                <p className="text-sm text-ink">{viewingLead.file_records?.length || 0} rows</p>
+              </div>
+            </div>
+
+            {viewingLead.file_headers && viewingLead.file_headers.length > 0 && (
+              <div>
+                <h3 className="font-semibold text-ink mb-2">Headers</h3>
+                <div className="bg-aqua-1/30 p-3 rounded-lg">
+                  <div className="flex flex-wrap gap-2">
+                    {viewingLead.file_headers.map((header, idx) => (
+                      <span key={idx} className="text-xs px-2 py-1 bg-white border border-line rounded text-ink">
+                        {header}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {viewingLead.file_records && viewingLead.file_records.length > 0 && (
+              <div>
+                <h3 className="font-semibold text-ink mb-2">Records ({viewingLead.file_records.length} rows)</h3>
+                <div className="overflow-x-auto border border-line rounded-lg">
+                  <table className="w-full text-sm">
+                    <thead className="bg-aqua-1/30 border-b border-line">
+                      <tr>
+                        {viewingLead.file_headers?.map((header, idx) => (
+                          <th key={idx} className="text-left text-xs font-bold text-muted uppercase py-2 px-3">
+                            {header}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {viewingLead.file_records.slice(0, 100).map((record, rowIdx) => (
+                        <tr key={rowIdx} className="border-b border-line/50 hover:bg-aqua-1/10">
+                          {record.map((cell, cellIdx) => (
+                            <td key={cellIdx} className="py-2 px-3 text-ink">
+                              {cell || '-'}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {viewingLead.file_records.length > 100 && (
+                    <div className="p-3 text-center text-xs text-muted bg-aqua-1/10">
+                      Showing first 100 of {viewingLead.file_records.length} records
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </Modal>
+      )}
+
+      {/* WhatsApp Modal */}
+      {showWhatsAppModal && selectedLeadId && (
+        <Modal
+          isOpen={true}
+          title="Send WhatsApp Message"
+          onClose={() => {
+            setShowWhatsAppModal(false);
+            setWhatsAppMessage('');
+          }}
+        >
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-ink mb-1">Message</label>
+              <textarea
+                value={whatsAppMessage}
+                onChange={(e) => setWhatsAppMessage(e.target.value)}
+                rows={4}
+                className="w-full px-4 py-2 border border-line rounded-xl focus:border-aqua-5 focus:ring-2 focus:ring-aqua-5/20 outline-none"
+                placeholder="Type your message here..."
+              />
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowWhatsAppModal(false);
+                  setWhatsAppMessage('');
                 }}
                 className="flex-1 px-4 py-2 border border-line rounded-xl hover:bg-aqua-1/30 transition-colors text-ink font-medium"
               >
                 Cancel
               </button>
               <button
-                onClick={editingLead ? handleUpdateLead : handleCreateLead}
-                className="flex-1 px-4 py-2 bg-aqua-5 text-white rounded-xl hover:bg-aqua-4 transition-colors font-semibold"
+                onClick={handleSendWhatsApp}
+                disabled={whatsAppSending || !whatsAppMessage.trim()}
+                className="flex-1 px-4 py-2 bg-green-500 text-white rounded-xl hover:bg-green-600 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
-                {editingLead ? 'Update' : 'Create'}
+                {whatsAppSending ? 'Sending...' : 'Send Message'}
               </button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
 
       {/* Follow-ups Modal */}
       {showFollowUpModal && selectedLeadId && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-ink">Follow-ups</h2>
-              <button
-                onClick={() => {
-                  setShowFollowUpModal(false);
-                  resetFollowUpForm();
-                }}
-                className="text-muted hover:text-ink"
-              >
-                ✕
-              </button>
-            </div>
-
+        <Modal
+          isOpen={true}
+          title="Follow-ups"
+          onClose={() => {
+            setShowFollowUpModal(false);
+            resetFollowUpForm();
+          }}
+        >
             {/* Follow-ups List */}
             <div className="mb-6 space-y-3 max-h-64 overflow-y-auto">
               {followUps[selectedLeadId]?.length > 0 ? (
@@ -835,8 +991,7 @@ export default function Leads() {
                 </div>
               </div>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

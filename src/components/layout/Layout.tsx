@@ -2,6 +2,7 @@ import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useEffect } from 'react';
 import Sidebar from './Sidebar';
 import { useAuthStore } from '../../stores/authStore';
+import LanguageSwitcher from '../LanguageSwitcher';
 
 export default function Layout() {
   const navigate = useNavigate();
@@ -104,6 +105,7 @@ export default function Layout() {
           <Outlet />
         </div>
       </main>
+      <LanguageSwitcher />
     </div>
   );
 }

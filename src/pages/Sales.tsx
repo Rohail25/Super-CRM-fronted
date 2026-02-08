@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import api from '../services/api';
 import Topbar from '../components/layout/Topbar';
+import Modal from '../components/ui/Modal';
 
 interface Customer {
   id: number;
@@ -64,14 +65,19 @@ export default function Sales() {
     total: 0,
   });
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showDetailModal, setShowDetailModal] = useState(false);
+  const [selectedOpportunity, setSelectedOpportunity] = useState<Opportunity | null>(null);
+  
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [users, setUsers] = useState<User[]>([]); // State for users
   const [formData, setFormData] = useState({
     name: '',
     description: '',
     stage: 'prospecting' as 'prospecting' | 'qualification' | 'proposal' | 'negotiation' | 'closed_won' | 'closed_lost' | 'on_hold',
     customer_id: '',
     project_id: '',
+    assigned_to: '', // Added assigned_to field
     value: '',
     currency: 'EUR',
     probability: '',
@@ -88,6 +94,7 @@ export default function Sales() {
     if (showCreateModal) {
       fetchCustomers();
       fetchProjects();
+      fetchUsers(); // Fetch users when modal opens
     }
   }, [showCreateModal]);
 
@@ -144,6 +151,16 @@ export default function Sales() {
     }
   };
 
+  const fetchUsers = async () => {
+    try {
+      const response = await api.get('/users'); // Assuming /users endpoint exists and returns list of users
+      setUsers(response.data.data || response.data || []);
+    } catch (error) {
+      console.error('Failed to fetch users:', error);
+      setUsers([]);
+    }
+  };
+
   const handleCreateOpportunity = async () => {
     try {
       const payload: any = {
@@ -154,6 +171,7 @@ export default function Sales() {
       if (formData.description) payload.description = formData.description;
       if (formData.customer_id) payload.customer_id = parseInt(formData.customer_id);
       if (formData.project_id) payload.project_id = parseInt(formData.project_id);
+      if (formData.assigned_to) payload.assigned_to = parseInt(formData.assigned_to); // Send assigned_to
       if (formData.value) payload.value = parseFloat(formData.value);
       if (formData.currency) payload.currency = formData.currency;
       if (formData.probability) payload.probability = parseInt(formData.probability);
@@ -164,12 +182,20 @@ export default function Sales() {
       await api.post('/opportunities', payload);
       setShowCreateModal(false);
       resetForm();
-      fetchOpportunities();
+      
+      // Reset pagination to first page and refresh opportunities to show the new one
+      setPagination(prev => ({ ...prev, current_page: 1 }));
+      fetchOpportunities(); 
     } catch (error: any) {
       console.error('Failed to create opportunity:', error);
       const errorMessage = error.response?.data?.message || 'Failed to create opportunity. Please try again.';
       alert(errorMessage);
     }
+  };
+
+  const handleViewOpportunity = (opportunity: Opportunity) => {
+    setSelectedOpportunity(opportunity);
+    setShowDetailModal(true);
   };
 
   const resetForm = () => {
@@ -179,6 +205,7 @@ export default function Sales() {
       stage: 'prospecting',
       customer_id: '',
       project_id: '',
+      assigned_to: '',
       value: '',
       currency: 'EUR',
       probability: '',
@@ -391,7 +418,12 @@ export default function Sales() {
                         {opportunity.assignee?.name || '-'}
                       </td>
                       <td className="px-4 py-3">
-                        <button className="text-sm text-aqua-5 hover:text-aqua-4 font-medium">View</button>
+                        <button 
+                          onClick={() => handleViewOpportunity(opportunity)}
+                          className="text-sm text-aqua-5 hover:text-aqua-4 font-medium"
+                        >
+                          View
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -431,167 +463,188 @@ export default function Sales() {
 
       {/* Create Opportunity Modal */}
       {showCreateModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <h2 className="text-xl font-bold text-ink mb-4">Create New Opportunity</h2>
+        <Modal
+          isOpen={true}
+          title="Create New Opportunity"
+          onClose={() => {
+            setShowCreateModal(false);
+            resetForm();
+          }}
+        >
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-ink mb-1">Opportunity Name *</label>
+              <input
+                type="text"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                className="w-full px-4 py-2 border border-line rounded-xl focus:border-aqua-5 focus:ring-2 focus:ring-aqua-5/20 outline-none"
+                required
+                placeholder="e.g., New Client Deal"
+              />
+            </div>
 
-            <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-ink mb-1">Description</label>
+              <textarea
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                rows={3}
+                className="w-full px-4 py-2 border border-line rounded-xl focus:border-aqua-5 focus:ring-2 focus:ring-aqua-5/20 outline-none"
+                placeholder="Describe the opportunity..."
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-ink mb-1">Opportunity Name *</label>
-                <input
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                <label className="block text-sm font-medium text-ink mb-1">Stage *</label>
+                <select
+                  value={formData.stage}
+                  onChange={(e) => setFormData({ ...formData, stage: e.target.value as any })}
                   className="w-full px-4 py-2 border border-line rounded-xl focus:border-aqua-5 focus:ring-2 focus:ring-aqua-5/20 outline-none"
                   required
-                  placeholder="e.g., New Client Deal"
+                >
+                  <option value="prospecting">Prospecting</option>
+                  <option value="qualification">Qualification</option>
+                  <option value="proposal">Proposal</option>
+                  <option value="negotiation">Negotiation</option>
+                  <option value="closed_won">Closed Won</option>
+                  <option value="closed_lost">Closed Lost</option>
+                  <option value="on_hold">On Hold</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-ink mb-1">Customer</label>
+                <select
+                  value={formData.customer_id}
+                  onChange={(e) => setFormData({ ...formData, customer_id: e.target.value })}
+                  className="w-full px-4 py-2 border border-line rounded-xl focus:border-aqua-5 focus:ring-2 focus:ring-aqua-5/20 outline-none"
+                >
+                  <option value="">Select Customer (Optional)</option>
+                  {customers.map((customer) => {
+                    const name = customer.company_name || 
+                      `${customer.first_name || ''} ${customer.last_name || ''}`.trim() || 
+                      customer.email;
+                    return (
+                      <option key={customer.id} value={customer.id}>
+                        {name}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-ink mb-1">Project</label>
+                <select
+                  value={formData.project_id}
+                  onChange={(e) => setFormData({ ...formData, project_id: e.target.value })}
+                  className="w-full px-4 py-2 border border-line rounded-xl focus:border-aqua-5 focus:ring-2 focus:ring-aqua-5/20 outline-none"
+                >
+                  <option value="">Select Project (Optional)</option>
+                  {projects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-ink mb-1">Assign To</label>
+                <select
+                  value={formData.assigned_to}
+                  onChange={(e) => setFormData({ ...formData, assigned_to: e.target.value })}
+                  className="w-full px-4 py-2 border border-line rounded-xl focus:border-aqua-5 focus:ring-2 focus:ring-aqua-5/20 outline-none"
+                >
+                  <option value="">Select User (Optional)</option>
+                  {users.map((user) => (
+                    <option key={user.id} value={user.id}>
+                      {user.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+               <div>
+                <label className="block text-sm font-medium text-ink mb-1">Expected Close Date</label>
+                <input
+                  type="date"
+                  value={formData.expected_close_date}
+                  onChange={(e) => setFormData({ ...formData, expected_close_date: e.target.value })}
+                  className="w-full px-4 py-2 border border-line rounded-xl focus:border-aqua-5 focus:ring-2 focus:ring-aqua-5/20 outline-none"
+                />
+              </div>
+
+               <div>
+                <label className="block text-sm font-medium text-ink mb-1">Value (€)</label>
+                <input
+                  type="number"
+                  value={formData.value}
+                  onChange={(e) => setFormData({ ...formData, value: e.target.value })}
+                  placeholder="0.00"
+                  step="0.01"
+                  min="0"
+                  className="w-full px-4 py-2 border border-line rounded-xl focus:border-aqua-5 focus:ring-2 focus:ring-aqua-5/20 outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-ink mb-1">Currency</label>
+                <select
+                  value={formData.currency}
+                  onChange={(e) => setFormData({ ...formData, currency: e.target.value })}
+                  className="w-full px-4 py-2 border border-line rounded-xl focus:border-aqua-5 focus:ring-2 focus:ring-aqua-5/20 outline-none"
+                >
+                  <option value="EUR">EUR</option>
+                  <option value="USD">USD</option>
+                  <option value="GBP">GBP</option>
+                  <option value="JPY">JPY</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-ink mb-1">Probability (%)</label>
+                <input
+                  type="number"
+                  value={formData.probability}
+                  onChange={(e) => setFormData({ ...formData, probability: e.target.value })}
+                  placeholder="0-100"
+                  min="0"
+                  max="100"
+                  className="w-full px-4 py-2 border border-line rounded-xl focus:border-aqua-5 focus:ring-2 focus:ring-aqua-5/20 outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-ink mb-1">Source</label>
+                <input
+                  type="text"
+                  value={formData.source}
+                  onChange={(e) => setFormData({ ...formData, source: e.target.value })}
+                  placeholder="e.g., website, referral, cold_call"
+                  className="w-full px-4 py-2 border border-line rounded-xl focus:border-aqua-5 focus:ring-2 focus:ring-aqua-5/20 outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-ink mb-1">Description</label>
-                <textarea
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  rows={3}
+                <label className="block text-sm font-medium text-ink mb-1">Campaign</label>
+                <input
+                  type="text"
+                  value={formData.campaign}
+                  onChange={(e) => setFormData({ ...formData, campaign: e.target.value })}
+                  placeholder="Campaign name"
                   className="w-full px-4 py-2 border border-line rounded-xl focus:border-aqua-5 focus:ring-2 focus:ring-aqua-5/20 outline-none"
-                  placeholder="Describe the opportunity..."
                 />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-ink mb-1">Stage *</label>
-                  <select
-                    value={formData.stage}
-                    onChange={(e) => setFormData({ ...formData, stage: e.target.value as any })}
-                    className="w-full px-4 py-2 border border-line rounded-xl focus:border-aqua-5 focus:ring-2 focus:ring-aqua-5/20 outline-none"
-                    required
-                  >
-                    <option value="prospecting">Prospecting</option>
-                    <option value="qualification">Qualification</option>
-                    <option value="proposal">Proposal</option>
-                    <option value="negotiation">Negotiation</option>
-                    <option value="closed_won">Closed Won</option>
-                    <option value="closed_lost">Closed Lost</option>
-                    <option value="on_hold">On Hold</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-ink mb-1">Customer</label>
-                  <select
-                    value={formData.customer_id}
-                    onChange={(e) => setFormData({ ...formData, customer_id: e.target.value })}
-                    className="w-full px-4 py-2 border border-line rounded-xl focus:border-aqua-5 focus:ring-2 focus:ring-aqua-5/20 outline-none"
-                  >
-                    <option value="">Select Customer (Optional)</option>
-                    {customers.map((customer) => {
-                      const name = customer.company_name || 
-                        `${customer.first_name || ''} ${customer.last_name || ''}`.trim() || 
-                        customer.email;
-                      return (
-                        <option key={customer.id} value={customer.id}>
-                          {name}
-                        </option>
-                      );
-                    })}
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-ink mb-1">Project</label>
-                  <select
-                    value={formData.project_id}
-                    onChange={(e) => setFormData({ ...formData, project_id: e.target.value })}
-                    className="w-full px-4 py-2 border border-line rounded-xl focus:border-aqua-5 focus:ring-2 focus:ring-aqua-5/20 outline-none"
-                  >
-                    <option value="">Select Project (Optional)</option>
-                    {projects.map((project) => (
-                      <option key={project.id} value={project.id}>
-                        {project.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-ink mb-1">Expected Close Date</label>
-                  <input
-                    type="date"
-                    value={formData.expected_close_date}
-                    onChange={(e) => setFormData({ ...formData, expected_close_date: e.target.value })}
-                    className="w-full px-4 py-2 border border-line rounded-xl focus:border-aqua-5 focus:ring-2 focus:ring-aqua-5/20 outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-ink mb-1">Value (€)</label>
-                  <input
-                    type="number"
-                    value={formData.value}
-                    onChange={(e) => setFormData({ ...formData, value: e.target.value })}
-                    placeholder="0.00"
-                    step="0.01"
-                    min="0"
-                    className="w-full px-4 py-2 border border-line rounded-xl focus:border-aqua-5 focus:ring-2 focus:ring-aqua-5/20 outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-ink mb-1">Currency</label>
-                  <select
-                    value={formData.currency}
-                    onChange={(e) => setFormData({ ...formData, currency: e.target.value })}
-                    className="w-full px-4 py-2 border border-line rounded-xl focus:border-aqua-5 focus:ring-2 focus:ring-aqua-5/20 outline-none"
-                  >
-                    <option value="EUR">EUR</option>
-                    <option value="USD">USD</option>
-                    <option value="GBP">GBP</option>
-                    <option value="JPY">JPY</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-ink mb-1">Probability (%)</label>
-                  <input
-                    type="number"
-                    value={formData.probability}
-                    onChange={(e) => setFormData({ ...formData, probability: e.target.value })}
-                    placeholder="0-100"
-                    min="0"
-                    max="100"
-                    className="w-full px-4 py-2 border border-line rounded-xl focus:border-aqua-5 focus:ring-2 focus:ring-aqua-5/20 outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-ink mb-1">Source</label>
-                  <input
-                    type="text"
-                    value={formData.source}
-                    onChange={(e) => setFormData({ ...formData, source: e.target.value })}
-                    placeholder="e.g., website, referral, cold_call"
-                    className="w-full px-4 py-2 border border-line rounded-xl focus:border-aqua-5 focus:ring-2 focus:ring-aqua-5/20 outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-ink mb-1">Campaign</label>
-                  <input
-                    type="text"
-                    value={formData.campaign}
-                    onChange={(e) => setFormData({ ...formData, campaign: e.target.value })}
-                    placeholder="Campaign name"
-                    className="w-full px-4 py-2 border border-line rounded-xl focus:border-aqua-5 focus:ring-2 focus:ring-aqua-5/20 outline-none"
-                  />
-                </div>
               </div>
             </div>
 
@@ -613,7 +666,116 @@ export default function Sales() {
               </button>
             </div>
           </div>
-        </div>
+        </Modal>
+      )}
+
+      {/* View Opportunity Modal */}
+      {showDetailModal && selectedOpportunity && (
+        <Modal
+          isOpen={true}
+          title="Opportunity Details"
+          onClose={() => {
+            setShowDetailModal(false);
+            setSelectedOpportunity(null);
+          }}
+        >
+          <div className="space-y-6">
+            <div className="flex items-center justify-between border-b border-line pb-4">
+              <div>
+                <h3 className="text-xl font-bold text-ink">{selectedOpportunity.name}</h3>
+                <p className="text-sm text-muted mt-1">
+                  Created on {formatDate(selectedOpportunity.created_at)}
+                </p>
+              </div>
+              <span
+                className={`px-3 py-1 rounded-full text-sm font-medium border ${getStageBadge(
+                  selectedOpportunity.stage
+                )}`}
+              >
+                {formatStage(selectedOpportunity.stage)}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-6">
+              <div>
+                <h4 className="text-sm font-semibold text-muted mb-2 uppercase">Financials</h4>
+                <div className="bg-aqua-1/10 p-4 rounded-xl space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted">Value:</span>
+                    <span className="font-semibold text-ink">
+                      {formatCurrency(selectedOpportunity.value, selectedOpportunity.currency)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted">Probability:</span>
+                    <span className="font-semibold text-ink">
+                      {selectedOpportunity.probability ? `${selectedOpportunity.probability}%` : '-'}
+                    </span>
+                  </div>
+                  {selectedOpportunity.weighted_value && (
+                     <div className="flex justify-between pt-2 border-t border-aqua-2">
+                       <span className="text-sm text-muted">Weighted:</span>
+                       <span className="font-semibold text-ink">
+                         {formatCurrency(selectedOpportunity.weighted_value, selectedOpportunity.currency)}
+                       </span>
+                     </div>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <h4 className="text-sm font-semibold text-muted mb-2 uppercase">Details</h4>
+                <div className="space-y-2">
+                  <div className="flex flex-col">
+                    <span className="text-xs text-muted">Customer</span>
+                    <span className="font-medium text-ink">
+                      {getCustomerName(selectedOpportunity.customer)}
+                    </span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-xs text-muted">Assigned To</span>
+                    <span className="font-medium text-ink">
+                      {selectedOpportunity.assignee?.name || '-'}
+                    </span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-xs text-muted">Expected Close</span>
+                    <span className="font-medium text-ink">
+                      {formatDate(selectedOpportunity.expected_close_date)}
+                    </span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-xs text-muted">Source</span>
+                    <span className="font-medium text-ink">
+                      {selectedOpportunity.source || '-'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {selectedOpportunity.description && (
+              <div>
+                <h4 className="text-sm font-semibold text-muted mb-2 uppercase">Description</h4>
+                <div className="bg-gray-50 p-4 rounded-xl text-sm text-ink border border-line">
+                  {selectedOpportunity.description}
+                </div>
+              </div>
+            )}
+
+            <div className="pt-4 border-t border-line flex justify-end">
+              <button
+                onClick={() => {
+                  setShowDetailModal(false);
+                  setSelectedOpportunity(null);
+                }}
+                className="px-4 py-2 border border-line rounded-xl hover:bg-aqua-1/30 transition-colors text-ink font-medium"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
     </div>
   );
