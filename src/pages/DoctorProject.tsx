@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../services/api';
+import { useAuthStore } from '../stores/authStore';
+import Modal from '../components/ui/Modal';
 
 interface DoctorData {
   doctor: {
@@ -57,12 +59,17 @@ interface DoctorData {
 export default function DoctorProject() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
+  const user = useAuthStore((state) => state.user);
+  const isSuperAdmin = user?.role === 'super_admin';
   
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [doctorData, setDoctorData] = useState<DoctorData | null>(null);
   const [activeTab, setActiveTab] = useState<'patients'|'appointments'|'orders'|'stats'>('patients');
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [plainPassword, setPlainPassword] = useState<string | null>(null);
+  const [credentialsLoading, setCredentialsLoading] = useState(false);
+  const [credentialsError, setCredentialsError] = useState<string | null>(null);
 
   useEffect(() => {
     if (projectId) {
@@ -97,9 +104,30 @@ export default function DoctorProject() {
     }
   };
 
-  const handleTryNow = () => {
-    window.open('https://mydoctorweb.mydoctorplus.it/login', '_blank');
+  const handleTryNow = async () => {
+    if (!user) return;
+
+    // Open login page in new tab
+    window.open('https://mydoctorweb.mydoctorplus.it/login', '_blank', 'noopener,noreferrer');
+
+    // Fetch credentials and show modal
     setShowLoginModal(true);
+    setCredentialsLoading(true);
+    setCredentialsError(null);
+    setPlainPassword(null);
+
+    try {
+      const response = await api.get(`/users/${user.id}/plain-password`);
+      setPlainPassword(response.data?.plain_password || null);
+      if (!response.data?.plain_password) {
+        setCredentialsError('Plain password not available');
+      }
+    } catch (err: any) {
+      setPlainPassword(null);
+      setCredentialsError(err.response?.data?.message || 'Failed to load credentials');
+    } finally {
+      setCredentialsLoading(false);
+    }
   };
 
   const copyToClipboard = (text: string) => {
@@ -169,12 +197,14 @@ export default function DoctorProject() {
           </button>
           <h1 className="text-xl font-bold text-ink">Doctor Project</h1>
         </div>
-        <button
-          onClick={handleTryNow}
-          className="px-4 py-2 text-sm border border-aqua-5/35 bg-gradient-to-r from-aqua-3/45 to-aqua-5/14 rounded-xl hover:shadow-lg hover:shadow-aqua-5/10 transition-all text-ink font-semibold"
-        >
-          Want to Try
-        </button>
+        {!isSuperAdmin && (
+          <button
+            onClick={handleTryNow}
+            className="px-4 py-2 text-sm border border-aqua-5/35 bg-gradient-to-r from-aqua-3/45 to-aqua-5/14 rounded-xl hover:shadow-lg hover:shadow-aqua-5/10 transition-all text-ink font-semibold"
+          >
+            Want to Try
+          </button>
+        )}
       </div>
 
       {/* Doctor Summary Card */}
@@ -439,37 +469,41 @@ export default function DoctorProject() {
       </div>
 
       {/* Login Modal */}
-      {showLoginModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-end z-50">
-          <div className="bg-white rounded-t-2xl w-full max-w-md p-6 shadow-2xl">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-bold text-ink">Login Credentials</h3>
-              <button
-                onClick={() => setShowLoginModal(false)}
-                className="text-2xl text-muted hover:text-ink"
-              >
-                ✕
-              </button>
-            </div>
-            
-            <p className="text-sm text-muted mb-6">
-              Use these credentials to sign in on the opened page:
+      <Modal
+        isOpen={showLoginModal}
+        onClose={() => {
+          setShowLoginModal(false);
+          setPlainPassword(null);
+          setCredentialsError(null);
+        }}
+        title="Doctor Project Login Credentials"
+        size="md"
+      >
+        <div className="space-y-4">
+          <div className="bg-aqua-1/10 border border-aqua-5/20 rounded-lg p-4">
+            <p className="text-sm text-muted mb-4">
+              The login page has been opened in a new tab. Use the credentials below to sign in:
             </p>
-
-            <div className="space-y-4">
+            
+            <div className="space-y-3">
               <div>
-                <label className="text-xs font-semibold text-muted block mb-2">Email</label>
-                <div className="flex gap-2">
+                <label className="block text-sm font-medium text-muted mb-1">Email Address</label>
+                <div className="flex items-center gap-2">
                   <input
                     type="text"
-                    value={doctorData.doctor?.email || ''}
+                    value={user?.email || doctorData?.doctor?.email || ''}
                     readOnly
-                    className="flex-1 px-3 py-2 bg-gray-50 border border-line rounded-lg font-mono text-sm"
+                    className="flex-1 px-3 py-2 bg-white border border-line rounded-lg text-ink font-mono text-sm"
                   />
                   <button
-                    onClick={() => copyToClipboard(doctorData.doctor?.email || '')}
-                    className="px-3 py-2 border border-line rounded-lg hover:bg-gray-50 transition-colors font-medium text-sm"
-                    title="Copy email"
+                    onClick={() => {
+                      const email = user?.email || doctorData?.doctor?.email || '';
+                      if (email) {
+                        navigator.clipboard.writeText(email);
+                      }
+                    }}
+                    className="px-3 py-2 text-sm border border-line rounded-lg hover:bg-gray-50 transition-colors"
+                    title="Copy to clipboard"
                   >
                     📋
                   </button>
@@ -477,28 +511,65 @@ export default function DoctorProject() {
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-muted block mb-2">Password</label>
-                <div className="flex gap-2">
+                <label className="block text-sm font-medium text-muted mb-1">Password</label>
+                <div className="flex items-center gap-2">
                   <input
                     type="text"
-                    value="Use your original password or reset it"
+                    value={credentialsLoading ? 'Loading...' : plainPassword || 'Not available'}
                     readOnly
-                    className="flex-1 px-3 py-2 bg-gray-50 border border-line rounded-lg font-mono text-sm text-xs"
+                    className="flex-1 px-3 py-2 bg-white border border-line rounded-lg text-ink font-mono text-sm"
                   />
+                  {plainPassword && (
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(plainPassword);
+                      }}
+                      className="px-3 py-2 text-sm border border-line rounded-lg hover:bg-gray-50 transition-colors"
+                      title="Copy to clipboard"
+                    >
+                      📋
+                    </button>
+                  )}
                 </div>
-                <p className="text-xs text-muted mt-2">Your original password was set during registration. If forgotten, use the password reset feature on the login page.</p>
               </div>
             </div>
 
+            {credentialsError && (
+              <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+                <p className="text-sm text-red-600">{credentialsError}</p>
+              </div>
+            )}
+
+            {credentialsLoading && (
+              <div className="mt-3 text-center">
+                <div className="inline-block animate-spin rounded-full h-5 w-5 border-b-2 border-aqua-5"></div>
+                <p className="text-sm text-muted mt-2">Loading credentials...</p>
+              </div>
+            )}
+          </div>
+
+          <div className="flex gap-3 pt-2">
             <button
-              onClick={() => setShowLoginModal(false)}
-              className="w-full mt-6 px-4 py-2 bg-aqua-5 text-white rounded-lg hover:bg-aqua-4 transition-colors font-medium"
+              onClick={() => {
+                window.open('https://mydoctorweb.mydoctorplus.it/login', '_blank', 'noopener,noreferrer');
+              }}
+              className="flex-1 px-4 py-2 bg-aqua-5 text-white rounded-lg hover:bg-aqua-4 transition-colors font-medium"
             >
-              Done
+              Open Login Page Again
+            </button>
+            <button
+              onClick={() => {
+                setShowLoginModal(false);
+                setPlainPassword(null);
+                setCredentialsError(null);
+              }}
+              className="px-4 py-2 border border-line text-ink rounded-lg hover:bg-gray-50 transition-colors font-medium"
+            >
+              Close
             </button>
           </div>
         </div>
-      )}
+      </Modal>
     </div>
   );
 }
