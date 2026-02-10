@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import Topbar from '../components/layout/Topbar';
+import { useAuthStore } from '../stores/authStore';
 import api from '../services/api';
 import Modal from '../components/ui/Modal';
 
@@ -41,6 +42,8 @@ interface FollowUp {
 export default function Leads() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const user = useAuthStore((state) => state.user);
+  const isSuperAdmin = user?.role === 'super_admin';
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({
@@ -424,12 +427,14 @@ export default function Leads() {
             <button className="px-4 py-2 text-sm border border-line rounded-xl hover:bg-aqua-1/30 transition-colors text-ink font-medium">
               {t('common.export', 'Export')}
             </button>
-            <button 
-              onClick={() => navigate('/emails')}
-              className="px-4 py-2 text-sm border border-purple-5/35 bg-gradient-to-r from-purple-3/45 to-purple-5/14 rounded-xl hover:shadow-lg hover:shadow-purple-5/10 transition-all text-ink font-semibold"
-            >
-              📧 Email Bulk
-            </button>
+            {isSuperAdmin && (
+              <button 
+                onClick={() => navigate('/emails')}
+                className="px-4 py-2 text-sm border border-purple-5/35 bg-gradient-to-r from-purple-3/45 to-purple-5/14 rounded-xl hover:shadow-lg hover:shadow-purple-5/10 transition-all text-ink font-semibold"
+              >
+                📧 Email Bulk
+              </button>
+            )}
             <button 
               onClick={() => setShowCreateModal(true)}
               className="px-4 py-2 text-sm border border-aqua-5/35 bg-gradient-to-r from-aqua-3/45 to-aqua-5/14 rounded-xl hover:shadow-lg hover:shadow-aqua-5/10 transition-all text-ink font-semibold"

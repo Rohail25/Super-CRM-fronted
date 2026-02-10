@@ -17,6 +17,7 @@ import Settings from './pages/Settings';
 import ProjectIframePage from './pages/ProjectIframePage';
 import DoctorProject from './pages/DoctorProject';
 import TGCalabriaProject from './pages/TGCalabriaProject';
+import TGCalabriaTry from './pages/TGCalabriaTry';
 import Subscribe from './pages/Subscribe';
 import SubscriptionSuccess from './pages/SubscriptionSuccess';
 import SubscriptionCancel from './pages/SubscriptionCancel';
@@ -112,6 +113,10 @@ export const router = createBrowserRouter([
       {
         path: 'projects/:projectId/tg-calabria',
         element: <TGCalabriaProject />,
+      },
+      {
+        path: 'projects/:projectId/tg-calabria/try',
+        element: <TGCalabriaTry />,
       },
       {
         path: 'project-management',

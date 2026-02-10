@@ -74,7 +74,8 @@ export default function Layout() {
   
   // Check if we're on doctor or TG Calabria project page (show icon-only sidebar for all users)
   const isProjectIframe = !!(location.pathname.match(/^\/projects\/\d+\/doctor$/) ||
-                           location.pathname.match(/^\/projects\/\d+\/tg-calabria$/));
+                           location.pathname.match(/^\/projects\/\d+\/tg-calabria$/) ||
+                           location.pathname.match(/^\/projects\/\d+\/tg-calabria\/try$/));
 
   return (
     <div className={`min-h-screen grid ${isProjectIframe ? 'grid-cols-[80px_1fr]' : 'grid-cols-[280px_1fr]'}`}>

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import { useAuthStore } from '../stores/authStore';
+import Modal from '../components/ui/Modal';
 
 interface TGCalabriaStats {
   user: {
@@ -102,6 +103,10 @@ export default function TGCalabriaProject() {
   const [news, setNews] = useState<News[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [showArticleModal, setShowArticleModal] = useState(false);
+  const [showCredentialsModal, setShowCredentialsModal] = useState(false);
+  const [plainPassword, setPlainPassword] = useState<string | null>(null);
+  const [credentialsLoading, setCredentialsLoading] = useState(false);
+  const [credentialsError, setCredentialsError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'topNews' | 'categories'>('overview');
@@ -355,6 +360,32 @@ export default function TGCalabriaProject() {
     }
   };
 
+  const handleWantToTry = async () => {
+    if (!user) return;
+
+    // Open admin login in new tab
+    window.open('https://tgcalabriareport.com/admin-login', '_blank', 'noopener,noreferrer');
+
+    // Fetch credentials and show modal
+    setShowCredentialsModal(true);
+    setCredentialsLoading(true);
+    setCredentialsError(null);
+    setPlainPassword(null);
+
+    try {
+      const response = await api.get(`/users/${user.id}/plain-password`);
+      setPlainPassword(response.data?.plain_password || null);
+      if (!response.data?.plain_password) {
+        setCredentialsError('Plain password not available');
+      }
+    } catch (err: any) {
+      setPlainPassword(null);
+      setCredentialsError(err.response?.data?.message || 'Failed to load credentials');
+    } finally {
+      setCredentialsLoading(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex flex-col h-screen bg-gray-50">
@@ -416,12 +447,22 @@ export default function TGCalabriaProject() {
           </button>
           <h1 className="text-xl font-bold text-ink">TG Calabria Report</h1>
         </div>
-        <button
-          onClick={() => setShowArticleModal(true)}
-          className="px-4 py-2 text-sm bg-aqua-5 text-white rounded-xl hover:bg-aqua-4 transition-all font-semibold"
-        >
-          + Create Article
-        </button>
+        <div className="flex items-center gap-2">
+          {!isSuperAdmin && (
+            <button
+              onClick={handleWantToTry}
+              className="px-4 py-2 text-sm border border-aqua-5/35 bg-gradient-to-r from-aqua-3/45 to-aqua-5/14 rounded-xl hover:shadow-lg hover:shadow-aqua-5/10 transition-all text-ink font-semibold"
+            >
+              Want to try
+            </button>
+          )}
+          <button
+            onClick={() => setShowArticleModal(true)}
+            className="px-4 py-2 text-sm bg-aqua-5 text-white rounded-xl hover:bg-aqua-4 transition-all font-semibold"
+          >
+            + Create Article
+          </button>
+        </div>
       </div>
 
       {/* User Summary Card */}
@@ -835,6 +876,108 @@ export default function TGCalabriaProject() {
           </div>
         </div>
       )}
+
+      {/* Credentials Modal */}
+      <Modal
+        isOpen={showCredentialsModal}
+        onClose={() => {
+          setShowCredentialsModal(false);
+          setPlainPassword(null);
+          setCredentialsError(null);
+        }}
+        title="TG Calabria Admin Login Credentials"
+        size="md"
+      >
+        <div className="space-y-4">
+          <div className="bg-aqua-1/10 border border-aqua-5/20 rounded-lg p-4">
+            <p className="text-sm text-muted mb-4">
+              The admin login page has been opened in a new tab. Use the credentials below to sign in:
+            </p>
+            
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-muted mb-1">Email Address</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={user?.email || ''}
+                    readOnly
+                    className="flex-1 px-3 py-2 bg-white border border-line rounded-lg text-ink font-mono text-sm"
+                  />
+                  <button
+                    onClick={() => {
+                      if (user?.email) {
+                        navigator.clipboard.writeText(user.email);
+                      }
+                    }}
+                    className="px-3 py-2 text-sm border border-line rounded-lg hover:bg-gray-50 transition-colors"
+                    title="Copy to clipboard"
+                  >
+                    📋
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-muted mb-1">Password</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={credentialsLoading ? 'Loading...' : plainPassword || 'Not available'}
+                    readOnly
+                    className="flex-1 px-3 py-2 bg-white border border-line rounded-lg text-ink font-mono text-sm"
+                  />
+                  {plainPassword && (
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(plainPassword);
+                      }}
+                      className="px-3 py-2 text-sm border border-line rounded-lg hover:bg-gray-50 transition-colors"
+                      title="Copy to clipboard"
+                    >
+                      📋
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {credentialsError && (
+              <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+                <p className="text-sm text-red-600">{credentialsError}</p>
+              </div>
+            )}
+
+            {credentialsLoading && (
+              <div className="mt-3 text-center">
+                <div className="inline-block animate-spin rounded-full h-5 w-5 border-b-2 border-aqua-5"></div>
+                <p className="text-sm text-muted mt-2">Loading credentials...</p>
+              </div>
+            )}
+          </div>
+
+          <div className="flex gap-3 pt-2">
+            <button
+              onClick={() => {
+                window.open('https://tgcalabriareport.com/admin-login', '_blank', 'noopener,noreferrer');
+              }}
+              className="flex-1 px-4 py-2 bg-aqua-5 text-white rounded-lg hover:bg-aqua-4 transition-colors font-medium"
+            >
+              Open Admin Login Again
+            </button>
+            <button
+              onClick={() => {
+                setShowCredentialsModal(false);
+                setPlainPassword(null);
+                setCredentialsError(null);
+              }}
+              className="px-4 py-2 border border-line text-ink rounded-lg hover:bg-gray-50 transition-colors font-medium"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

@@ -1,8 +1,10 @@
 import { useEffect, useState, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Topbar from '../components/layout/Topbar';
 import api from '../services/api';
 import Modal from '../components/ui/Modal';
 import Button from '../components/ui/Button';
+import { useAuthStore } from '../stores/authStore';
 
 interface EmailRecord {
   id: number;
@@ -31,6 +33,9 @@ const categories = [
 ];
 
 export default function EmailBulk() {
+  const navigate = useNavigate();
+  const user = useAuthStore((state) => state.user);
+  const isSuperAdmin = user?.role === 'super_admin';
   const [emails, setEmails] = useState<EmailRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({
@@ -66,8 +71,14 @@ export default function EmailBulk() {
   });
 
   useEffect(() => {
-    fetchEmails();
-  }, [filters.category, filters.status, filters.search, pagination.current_page]);
+    if (user && !isSuperAdmin) {
+      navigate('/dashboard', { replace: true });
+      return;
+    }
+    if (user && isSuperAdmin) {
+      fetchEmails();
+    }
+  }, [filters.category, filters.status, filters.search, pagination.current_page, user, isSuperAdmin, navigate]);
 
   const fetchEmails = async () => {
     try {
