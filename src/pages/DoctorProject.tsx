@@ -130,6 +130,14 @@ export default function DoctorProject() {
     }
   };
 
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (err) {
+      console.error('Failed to copy to clipboard:', err);
+    }
+  };
+
   // Loading state
   if (loading) {
     return (
@@ -495,7 +503,7 @@ export default function DoctorProject() {
                     onClick={() => {
                       const email = user?.email || doctorData?.doctor?.email || '';
                       if (email) {
-                        navigator.clipboard.writeText(email);
+                        copyToClipboard(email);
                       }
                     }}
                     className="px-3 py-2 text-sm border border-line rounded-lg hover:bg-gray-50 transition-colors"
@@ -518,7 +526,7 @@ export default function DoctorProject() {
                   {plainPassword && (
                     <button
                       onClick={() => {
-                        navigator.clipboard.writeText(plainPassword);
+                        copyToClipboard(plainPassword);
                       }}
                       className="px-3 py-2 text-sm border border-line rounded-lg hover:bg-gray-50 transition-colors"
                       title="Copy to clipboard"

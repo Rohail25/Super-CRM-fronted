@@ -178,12 +178,28 @@ export default function MediaLibrary({ isOpen, onClose, onSelect }: MediaLibrary
                       className="w-full h-full object-cover"
                       loading="lazy"
                       onError={(e) => {
+                        // Log error for debugging
+                        console.error('Failed to load image:', item.url, item);
                         // Hide broken images instead of showing error text
                         (e.target as HTMLImageElement).style.display = 'none';
+                        // Show a placeholder or error indicator
+                        const parent = (e.target as HTMLImageElement).parentElement;
+                        if (parent && !parent.querySelector('.image-error')) {
+                          const errorDiv = document.createElement('div');
+                          errorDiv.className = 'image-error absolute inset-0 flex items-center justify-center bg-gray-200 text-gray-500 text-xs';
+                          errorDiv.textContent = 'Failed to load';
+                          parent.appendChild(errorDiv);
+                        }
                       }}
                       onLoad={(e) => {
                         // Ensure image is visible when loaded
                         (e.target as HTMLImageElement).style.display = 'block';
+                        // Remove any error indicators
+                        const parent = (e.target as HTMLImageElement).parentElement;
+                        const errorDiv = parent?.querySelector('.image-error');
+                        if (errorDiv) {
+                          errorDiv.remove();
+                        }
                       }}
                     />
                   )}
