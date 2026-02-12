@@ -130,10 +130,6 @@ export default function DoctorProject() {
     }
   };
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-  };
-
   // Loading state
   if (loading) {
     return (

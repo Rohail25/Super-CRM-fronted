@@ -1,21 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../services/api';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
-
-interface Project {
-  id: number;
-  name: string;
-  description?: string;
-}
 
 export default function Register() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [success, setSuccess] = useState(false);
-  const [projects, setProjects] = useState<Project[]>([]);
   const [formData, setFormData] = useState({
     // Company data
     company_name: '',
@@ -29,21 +22,6 @@ export default function Register() {
     // Projects
     requested_projects: [] as number[],
   });
-
-  useEffect(() => {
-    // Fetch available projects for selection
-    fetchProjects();
-  }, []);
-
-  const fetchProjects = async () => {
-    try {
-      const response = await api.get('/projects/public');
-      setProjects(Array.isArray(response.data) ? response.data : []);
-    } catch (error) {
-      console.error('Failed to fetch projects:', error);
-      // If it fails, we'll just show an empty list - admin can assign projects later
-    }
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -119,15 +97,6 @@ export default function Register() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleProjectToggle = (projectId: number) => {
-    setFormData((prev) => ({
-      ...prev,
-      requested_projects: prev.requested_projects.includes(projectId)
-        ? prev.requested_projects.filter((id) => id !== projectId)
-        : [...prev.requested_projects, projectId],
-    }));
   };
 
   if (success) {

@@ -297,31 +297,31 @@ export default function Marketing() {
 
       // If image file is uploaded, use FormData, otherwise use JSON
       if (formData.image) {
-        const formDataToSend = new FormData();
+      const formDataToSend = new FormData();
         formDataToSend.append('title', formData.title);
         if (formData.displayName) formDataToSend.append('displayName', formData.displayName);
-        if (formData.description) formDataToSend.append('description', formData.description);
+      if (formData.description) formDataToSend.append('description', formData.description);
         formDataToSend.append('image', formData.image);
         formDataToSend.append('imageUrl', formData.imageUrl || '');
-        formDataToSend.append('type', formData.type);
+      formDataToSend.append('type', formData.type);
         formDataToSend.append('startDate', startDateISO);
         formDataToSend.append('endDate', endDateISO);
         if (formData.price) formDataToSend.append('price', formData.price);
         if (formData.position) formDataToSend.append('position', formData.position);
         if (formData.target_link) formDataToSend.append('targetLink', formData.target_link);
-        formDataToSend.append('track_clicks', formData.track_clicks.toString());
-        formDataToSend.append('track_opens', formData.track_opens.toString());
-        formDataToSend.append('target_audience', JSON.stringify(formData.target_audience || []));
-        formDataToSend.append('target_criteria', JSON.stringify(formData.target_criteria || []));
+      formDataToSend.append('track_clicks', formData.track_clicks.toString());
+      formDataToSend.append('track_opens', formData.track_opens.toString());
+      formDataToSend.append('target_audience', JSON.stringify(formData.target_audience || []));
+      formDataToSend.append('target_criteria', JSON.stringify(formData.target_criteria || []));
 
-        if (editingCampaign) {
-          await api.put(`/campaigns/${editingCampaign.id}`, formDataToSend, {
+      if (editingCampaign) {
+        await api.put(`/campaigns/${editingCampaign.id}`, formDataToSend, {
             headers: { 'Content-Type': 'multipart/form-data' },
-          });
-        } else {
-          await api.post('/campaigns', formDataToSend, {
+        });
+      } else {
+        await api.post('/campaigns', formDataToSend, {
             headers: { 'Content-Type': 'multipart/form-data' },
-          });
+        });
         }
       } else {
         // Send as JSON when no file upload
@@ -816,18 +816,18 @@ export default function Marketing() {
                               </button>
                             )}
                             {campaign.status === 'active' && (
-                              <button
-                                onClick={() => handleActivate(campaign)}
-                                disabled={!campaign.target_link}
-                                className={`text-xs px-2 py-1 rounded font-medium ${
-                                  campaign.target_link
-                                    ? 'bg-blue-500 text-white hover:bg-blue-600'
-                                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                                }`}
+                          <button
+                            onClick={() => handleActivate(campaign)}
+                            disabled={!campaign.target_link}
+                            className={`text-xs px-2 py-1 rounded font-medium ${
+                              campaign.target_link
+                                ? 'bg-blue-500 text-white hover:bg-blue-600'
+                                : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                            }`}
                                 title={!campaign.target_link ? 'Please add a target link to activate this campaign' : 'Re-activate campaign in tg-calabria site'}
-                              >
+                          >
                                 Re-Activate
-                              </button>
+                          </button>
                             )}
                             {campaign.status === 'paused' && (
                               <button
@@ -995,14 +995,14 @@ export default function Marketing() {
                     Image/Video URL <span className="text-red-500">*</span>
                   </label>
                   <div className="flex gap-2">
-                    <input
+                  <input
                       type="text"
                       value={formData.imageUrl}
                       onChange={(e) => setFormData({ ...formData, imageUrl: e.target.value })}
                       placeholder="https://example.com/image.jpg"
                       required
                       className="flex-1 px-3 py-2 border border-line rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-aqua-5/20"
-                    />
+                  />
                     <button
                       type="button"
                       onClick={() => setShowMediaLibrary(true)}
@@ -1100,11 +1100,11 @@ export default function Marketing() {
                   <label className="block text-sm font-semibold text-ink mb-2">
                     Position (Optional)
                   </label>
-                  <select
+                    <select
                     value={formData.position}
                     onChange={(e) => setFormData({ ...formData, position: e.target.value })}
                     className="w-full px-3 py-2 border border-line rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-aqua-5/20"
-                  >
+                    >
                     <option value="">None (Auto)</option>
                     <option value="HEADER">Header</option>
                     <option value="HEADER_LEADERBOARD">Sidebar</option>
@@ -1117,11 +1117,11 @@ export default function Marketing() {
                     <option value="BETWEEN_SECTIONS_3">Footer</option>
                     <option value="FOOTER">Mobile</option>
                     <option value="MOBILE">Mobile</option>
-                  </select>
+                    </select>
                   <p className="text-xs text-muted mt-1">
                     Optional: Specify a position to book a specific slot. If not specified, ad will be auto-assigned based on type.
                   </p>
-                </div>
+                  </div>
 
                 <div>
                   <label className="block text-sm font-semibold text-ink mb-2">
@@ -1140,14 +1140,14 @@ export default function Marketing() {
                   <label className="block text-sm font-semibold text-ink mb-2">
                     End Date <span className="text-red-500">*</span>
                   </label>
-                  <input
+                      <input
                     type="datetime-local"
                     value={formData.endDate}
                     onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
                     required
-                    className="w-full px-3 py-2 border border-line rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-aqua-5/20"
-                  />
-                </div>
+                        className="w-full px-3 py-2 border border-line rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-aqua-5/20"
+                      />
+                    </div>
 
                     <div className="md:col-span-2">
                   <label className="block text-sm font-semibold text-ink mb-2">Target Audience</label>

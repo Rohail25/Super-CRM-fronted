@@ -65,7 +65,7 @@ export default function EmailBulk() {
       return;
     }
     if (user && isSuperAdmin) {
-      fetchEmails();
+    fetchEmails();
     }
   }, [filters.category, filters.status, filters.search, pagination.current_page, user, isSuperAdmin, navigate]);
 
