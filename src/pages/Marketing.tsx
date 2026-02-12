@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import api from '../services/api';
 import Topbar from '../components/layout/Topbar';
 import { useAuthStore } from '../stores/authStore';
+import MediaLibrary from '../components/media/MediaLibrary';
 
 interface User {
   id: number;
@@ -22,7 +23,7 @@ interface Campaign {
   image_path: string | null;
   target_link: string | null;
   type: 'BANNER_TOP' | 'BANNER_SIDE' | 'INLINE' | 'FOOTER' | 'SLIDER' | 'TICKER' | 'POPUP' | 'STICKY';
-  status: 'draft' | 'scheduled' | 'active' | 'paused' | 'completed' | 'cancelled';
+  status: 'pending' | 'active' | 'paused' | 'expired' | 'rejected';
   start_date: string | null;
   end_date: string | null;
   budget: number | null;
@@ -85,20 +86,22 @@ export default function Marketing() {
   const [stats, setStats] = useState<CampaignStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [showMediaLibrary, setShowMediaLibrary] = useState(false);
   const [editingCampaign, setEditingCampaign] = useState<Campaign | null>(null);
   const [_projects, setProjects] = useState<Project[]>([]);
   const [paymentSuccess, setPaymentSuccess] = useState<string | null>(null);
   const [formData, setFormData] = useState({
-    name: '',
+    title: '',
+    displayName: '',
     description: '',
+    imageUrl: '',
     image: null as File | null,
-    imagePreview: null as string | null,
     type: 'BANNER_TOP' as 'BANNER_TOP' | 'BANNER_SIDE' | 'INLINE' | 'FOOTER' | 'SLIDER' | 'TICKER' | 'POPUP' | 'STICKY',
     project_id: null as number | null,
-    start_date: '',
-    end_date: '',
-    budget: '',
-    currency: 'EUR',
+    startDate: '',
+    endDate: '',
+    price: '',
+    position: '',
     target_link: '',
     target_audience: [] as string[],
     target_criteria: [] as string[],
@@ -160,17 +163,24 @@ export default function Marketing() {
   useEffect(() => {
     if (showModal && editingCampaign) {
       // Populate form with existing campaign data
+      const imageUrl = editingCampaign.image_path 
+        ? (editingCampaign.image_path.startsWith('http') 
+            ? editingCampaign.image_path 
+            : `${api.defaults.baseURL?.replace('/api', '') || ''}/storage/${editingCampaign.image_path}`)
+        : '';
+      
       setFormData({
-        name: editingCampaign.name || '',
+        title: editingCampaign.name || '',
+        displayName: (editingCampaign.settings as any)?.displayName || '',
         description: editingCampaign.description || '',
+        imageUrl: imageUrl,
         image: null,
-        imagePreview: editingCampaign.image_path ? `${api.defaults.baseURL?.replace('/api', '') || ''}/storage/${editingCampaign.image_path}` : null,
         type: editingCampaign.type || 'BANNER_TOP',
         project_id: editingCampaign.project?.id || null,
-        start_date: editingCampaign.start_date ? new Date(editingCampaign.start_date).toISOString().slice(0, 16) : '',
-        end_date: editingCampaign.end_date ? new Date(editingCampaign.end_date).toISOString().slice(0, 16) : '',
-        budget: editingCampaign.budget?.toString() || '',
-        currency: editingCampaign.currency || 'EUR',
+        startDate: editingCampaign.start_date ? new Date(editingCampaign.start_date).toISOString().slice(0, 16) : '',
+        endDate: editingCampaign.end_date ? new Date(editingCampaign.end_date).toISOString().slice(0, 16) : '',
+        price: editingCampaign.budget?.toString() || '',
+        position: (editingCampaign.settings as any)?.position || '',
         target_link: editingCampaign.target_link || (editingCampaign.settings as any)?.target_link || (editingCampaign.content_data as any)?.target_link || '',
         target_audience: Array.isArray(editingCampaign.target_audience) ? editingCampaign.target_audience : [],
         target_criteria: Array.isArray(editingCampaign.target_criteria) ? editingCampaign.target_criteria : [],
@@ -180,16 +190,17 @@ export default function Marketing() {
     } else if (showModal && !editingCampaign) {
       // Reset form for new campaign
       setFormData({
-        name: '',
+        title: '',
+        displayName: '',
         description: '',
+        imageUrl: '',
         image: null,
-        imagePreview: null,
         type: 'BANNER_TOP',
         project_id: null,
-        start_date: '',
-        end_date: '',
-        budget: '',
-        currency: 'EUR',
+        startDate: '',
+        endDate: '',
+        price: '',
+        position: '',
         target_link: '',
         target_audience: [],
         target_criteria: [],
@@ -260,39 +271,65 @@ export default function Marketing() {
     setFormError('');
 
     try {
-      const formDataToSend = new FormData();
-      formDataToSend.append('name', formData.name);
-      if (formData.description) formDataToSend.append('description', formData.description);
-      if (formData.image) formDataToSend.append('image', formData.image);
-      formDataToSend.append('type', formData.type);
-      if (formData.project_id) formDataToSend.append('project_id', formData.project_id.toString());
-      if (formData.start_date) formDataToSend.append('start_date', formData.start_date);
-      if (formData.end_date) formDataToSend.append('end_date', formData.end_date);
-      if (formData.budget) formDataToSend.append('budget', formData.budget);
-      formDataToSend.append('currency', formData.currency);
-      // Always send target_link, even if empty
-      formDataToSend.append('target_link', formData.target_link || '');
-      formDataToSend.append('track_clicks', formData.track_clicks.toString());
-      formDataToSend.append('track_opens', formData.track_opens.toString());
-      
-      // Always send target_audience and target_criteria, even if empty
-      formDataToSend.append('target_audience', JSON.stringify(formData.target_audience || []));
-      formDataToSend.append('target_criteria', JSON.stringify(formData.target_criteria || []));
+      // Convert datetime-local to ISO format
+      const startDateISO = formData.startDate 
+        ? new Date(formData.startDate).toISOString() 
+        : '';
+      const endDateISO = formData.endDate 
+        ? new Date(formData.endDate).toISOString() 
+        : '';
 
-      if (editingCampaign) {
-        // Update existing campaign
-        await api.put(`/campaigns/${editingCampaign.id}`, formDataToSend, {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-          },
-        });
+      // Prepare payload according to the new structure
+      const payload: any = {
+        title: formData.title,
+        type: formData.type,
+        startDate: startDateISO,
+        endDate: endDateISO,
+      };
+
+      // Optional fields
+      if (formData.imageUrl) payload.imageUrl = formData.imageUrl;
+      if (formData.displayName) payload.displayName = formData.displayName;
+      if (formData.target_link) payload.targetLink = formData.target_link;
+      if (formData.price) payload.price = parseInt(formData.price);
+      if (formData.position) payload.position = formData.position;
+      if (formData.description) payload.description = formData.description;
+
+      // If image file is uploaded, use FormData, otherwise use JSON
+      if (formData.image) {
+        const formDataToSend = new FormData();
+        formDataToSend.append('title', formData.title);
+        if (formData.displayName) formDataToSend.append('displayName', formData.displayName);
+        if (formData.description) formDataToSend.append('description', formData.description);
+        formDataToSend.append('image', formData.image);
+        formDataToSend.append('imageUrl', formData.imageUrl || '');
+        formDataToSend.append('type', formData.type);
+        formDataToSend.append('startDate', startDateISO);
+        formDataToSend.append('endDate', endDateISO);
+        if (formData.price) formDataToSend.append('price', formData.price);
+        if (formData.position) formDataToSend.append('position', formData.position);
+        if (formData.target_link) formDataToSend.append('targetLink', formData.target_link);
+        formDataToSend.append('track_clicks', formData.track_clicks.toString());
+        formDataToSend.append('track_opens', formData.track_opens.toString());
+        formDataToSend.append('target_audience', JSON.stringify(formData.target_audience || []));
+        formDataToSend.append('target_criteria', JSON.stringify(formData.target_criteria || []));
+
+        if (editingCampaign) {
+          await api.put(`/campaigns/${editingCampaign.id}`, formDataToSend, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+          });
+        } else {
+          await api.post('/campaigns', formDataToSend, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+          });
+        }
       } else {
-        // Create new campaign (status will be set to 'draft' by backend)
-        await api.post('/campaigns', formDataToSend, {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-          },
-        });
+        // Send as JSON when no file upload
+        if (editingCampaign) {
+          await api.put(`/campaigns/${editingCampaign.id}`, payload);
+        } else {
+          await api.post('/campaigns', payload);
+        }
       }
 
       setShowModal(false);
@@ -313,12 +350,71 @@ export default function Marketing() {
     }
 
     try {
-      await api.put(`/campaigns/${campaignId}`, { status: newStatus });
+      // Get the full campaign data to send complete payload
+      const campaign = campaigns.find(c => c.id === campaignId);
+      if (!campaign) {
+        throw new Error('Campaign not found');
+      }
+
+      // Prepare payload with all campaign data
+      const payload: any = {
+        status: newStatus,
+        name: campaign.name,
+        type: campaign.type,
+      };
+
+      if (campaign.description) payload.description = campaign.description;
+      if (campaign.target_link) payload.target_link = campaign.target_link;
+      if (campaign.start_date) payload.start_date = campaign.start_date;
+      if (campaign.end_date) payload.end_date = campaign.end_date;
+      if (campaign.budget) payload.budget = campaign.budget;
+      if (campaign.currency) payload.currency = campaign.currency;
+      
+      // Include settings if they exist
+      if (campaign.settings) {
+        payload.settings = campaign.settings;
+      }
+
+      await api.put(`/campaigns/${campaignId}`, payload);
       fetchCampaigns();
       fetchStats();
     } catch (error: any) {
       console.error('Failed to update campaign status:', error);
       alert(error.response?.data?.message || 'Failed to update campaign status');
+    }
+  };
+
+  const handleResume = async (campaign: Campaign) => {
+    if (!confirm('Are you sure you want to resume this campaign?')) {
+      return;
+    }
+
+    try {
+      // Get the full campaign data to send complete payload (same as handleStatusChange)
+      const payload: any = {
+        status: 'active',
+        name: campaign.name,
+        type: campaign.type,
+      };
+
+      if (campaign.description) payload.description = campaign.description;
+      if (campaign.target_link) payload.target_link = campaign.target_link;
+      if (campaign.start_date) payload.start_date = campaign.start_date;
+      if (campaign.end_date) payload.end_date = campaign.end_date;
+      if (campaign.budget) payload.budget = campaign.budget;
+      if (campaign.currency) payload.currency = campaign.currency;
+      
+      // Include settings if they exist
+      if (campaign.settings) {
+        payload.settings = campaign.settings;
+      }
+
+      await api.put(`/campaigns/${campaign.id}`, payload);
+      fetchCampaigns();
+      fetchStats();
+    } catch (error: any) {
+      console.error('Failed to resume campaign:', error);
+      alert(error.response?.data?.message || 'Failed to resume campaign');
     }
   };
 
@@ -338,7 +434,12 @@ export default function Marketing() {
   };
 
   const handleActivate = async (campaign: Campaign) => {
-    if (!confirm('Are you sure you want to activate this campaign? This will create an ad in the external system.')) {
+    const isAlreadyActive = campaign.status === 'active';
+    const confirmMessage = isAlreadyActive
+      ? 'Are you sure you want to re-activate this campaign? This will register/update the ad in the tg-calabria site.'
+      : 'Are you sure you want to activate this campaign? This will create an ad in the tg-calabria site.';
+    
+    if (!confirm(confirmMessage)) {
       return;
     }
 
@@ -407,14 +508,13 @@ export default function Marketing() {
 
   const getStatusBadge = (status: string) => {
     const styles = {
-      draft: 'bg-muted/15 text-muted border-muted/30',
-      scheduled: 'bg-aqua-1/30 text-aqua-5 border-aqua-5/30',
+      pending: 'bg-aqua-1/30 text-aqua-5 border-aqua-5/30',
       active: 'bg-ok/15 text-ok border-ok/30',
       paused: 'bg-warn/15 text-warn border-warn/30',
-      completed: 'bg-ok/15 text-ok border-ok/30',
-      cancelled: 'bg-bad/15 text-bad border-bad/30',
+      expired: 'bg-muted/15 text-muted border-muted/30',
+      rejected: 'bg-bad/15 text-bad border-bad/30',
     };
-    return styles[status as keyof typeof styles] || styles.draft;
+    return styles[status as keyof typeof styles] || styles.pending;
   };
 
   const getTypeBadge = (type: string) => {
@@ -547,12 +647,11 @@ export default function Marketing() {
               className="w-full px-3 py-2 border border-line rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-aqua-5/20"
             >
               <option value="all">All Status</option>
-              <option value="draft">Draft</option>
-              <option value="scheduled">Scheduled</option>
+              <option value="pending">Pending</option>
               <option value="active">Active</option>
               <option value="paused">Paused</option>
-              <option value="completed">Completed</option>
-              <option value="cancelled">Cancelled</option>
+              <option value="expired">Expired</option>
+              <option value="rejected">Rejected</option>
             </select>
           </div>
           <div>
@@ -670,12 +769,11 @@ export default function Marketing() {
                               onChange={(e) => handleStatusChange(campaign.id, e.target.value)}
                               className="text-xs border border-line rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-aqua-5/20"
                             >
-                              <option value="draft">Draft</option>
-                              <option value="scheduled">Scheduled</option>
+                              <option value="pending">Pending</option>
                               <option value="active">Active</option>
                               <option value="paused">Paused</option>
-                              <option value="completed">Completed</option>
-                              <option value="cancelled">Cancelled</option>
+                              <option value="expired">Expired</option>
+                              <option value="rejected">Rejected</option>
                             </select>
                           )}
                           {(isSuperAdmin || campaign.creator?.id === user?.id) && (
@@ -707,18 +805,63 @@ export default function Marketing() {
                               </button>
                             )}
                         {isSuperAdmin && campaign.payment_status === 'paid' && (
-                          <button
-                            onClick={() => handleActivate(campaign)}
-                            disabled={!campaign.target_link}
-                            className={`text-xs px-2 py-1 rounded font-medium ${
-                              campaign.target_link
-                                ? 'bg-blue-500 text-white hover:bg-blue-600'
-                                : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                            }`}
-                            title={!campaign.target_link ? 'Please add a target link to activate this campaign' : 'Activate campaign'}
-                          >
-                            Activate
-                          </button>
+                          <>
+                            {campaign.status === 'pending' && (
+                              <button
+                                onClick={() => handleActivate(campaign)}
+                                className="text-xs px-2 py-1 rounded font-medium bg-blue-500 text-white hover:bg-blue-600"
+                                title="Activate campaign and create ad in tg-calabria"
+                              >
+                                Activate
+                              </button>
+                            )}
+                            {campaign.status === 'active' && (
+                              <button
+                                onClick={() => handleActivate(campaign)}
+                                disabled={!campaign.target_link}
+                                className={`text-xs px-2 py-1 rounded font-medium ${
+                                  campaign.target_link
+                                    ? 'bg-blue-500 text-white hover:bg-blue-600'
+                                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                }`}
+                                title={!campaign.target_link ? 'Please add a target link to activate this campaign' : 'Re-activate campaign in tg-calabria site'}
+                              >
+                                Re-Activate
+                              </button>
+                            )}
+                            {campaign.status === 'paused' && (
+                              <button
+                                onClick={() => handleResume(campaign)}
+                                disabled={!campaign.target_link}
+                                className={`text-xs px-2 py-1 rounded font-medium ${
+                                  campaign.target_link
+                                    ? 'bg-green-500 text-white hover:bg-green-600'
+                                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                }`}
+                                title={!campaign.target_link ? 'Please add a target link to resume this campaign' : 'Resume campaign'}
+                              >
+                                Resume
+                              </button>
+                            )}
+                            {campaign.status === 'rejected' && (
+                              <button
+                                disabled={true}
+                                className="text-xs px-2 py-1 rounded font-medium bg-gray-300 text-gray-500 cursor-not-allowed"
+                                title="Campaign is rejected"
+                              >
+                                Rejected
+                              </button>
+                            )}
+                            {campaign.status === 'expired' && (
+                              <button
+                                disabled={true}
+                                className="text-xs px-2 py-1 rounded font-medium bg-gray-300 text-gray-500 cursor-not-allowed"
+                                title="Campaign is expired"
+                              >
+                                Expired
+                              </button>
+                            )}
+                          </>
                         )}
                       </div>
                     </td>
@@ -795,30 +938,37 @@ export default function Marketing() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="md:col-span-2">
                   <label className="block text-sm font-semibold text-ink mb-2">
-                    Campaign Name <span className="text-red-500">*</span>
+                    Title <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    value={formData.title}
+                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                    placeholder="Advertisement title"
                     required
                     className="w-full px-3 py-2 border border-line rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-aqua-5/20"
                   />
                 </div>
 
                 <div className="md:col-span-2">
-                  <label className="block text-sm font-semibold text-ink mb-2">Description</label>
-                  <textarea
-                    value={formData.description}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    rows={3}
+                  <label className="block text-sm font-semibold text-ink mb-2">
+                    Display Name (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.displayName}
+                    onChange={(e) => setFormData({ ...formData, displayName: e.target.value })}
+                    placeholder="E.g.: Christmas Promotion Ticker"
                     className="w-full px-3 py-2 border border-line rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-aqua-5/20"
                   />
+                  <p className="text-xs text-muted mt-1">
+                    Useful for easily identifying ticker ads in the list
+                  </p>
                 </div>
 
                 <div>
                   <label className="block text-sm font-semibold text-ink mb-2">
-                    Type <span className="text-red-500">*</span>
+                    Type * (Ad Type)
                   </label>
                   <select
                     value={formData.type}
@@ -835,26 +985,60 @@ export default function Marketing() {
                     <option value="POPUP">Popup</option>
                     <option value="STICKY">Sticky</option>
                   </select>
+                  <p className="text-xs text-muted mt-1">
+                    Ad type defines the size and behavior (e.g., Banner Top: 728x90px, Slider: 1920x600px, Slider Top: for homepage hero section)
+                  </p>
                 </div>
 
                 <div className="md:col-span-2">
                   <label className="block text-sm font-semibold text-ink mb-2">
-                    Image <span className="text-red-500">*</span>
+                    Image/Video URL <span className="text-red-500">*</span>
                   </label>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) {
-                        setFormData({ ...formData, image: file, imagePreview: URL.createObjectURL(file) });
-                      }
-                    }}
-                    className="w-full px-3 py-2 border border-line rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-aqua-5/20"
-                  />
-                  {formData.imagePreview && (
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={formData.imageUrl}
+                      onChange={(e) => setFormData({ ...formData, imageUrl: e.target.value })}
+                      placeholder="https://example.com/image.jpg"
+                      required
+                      className="flex-1 px-3 py-2 border border-line rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-aqua-5/20"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowMediaLibrary(true)}
+                      className="px-4 py-2 border border-line rounded-xl text-sm hover:bg-gray-50 transition-colors"
+                    >
+                      Media Library
+                    </button>
+                  </div>
+                  {formData.imageUrl && (
                     <div className="mt-2">
-                      <img src={formData.imagePreview} alt="Preview" className="max-w-xs max-h-48 rounded-lg border border-line" />
+                      {formData.imageUrl.match(/\.(mp4|webm|ogg|mov|avi)$/i) ? (
+                        <video
+                          src={formData.imageUrl}
+                          className="max-w-xs max-h-48 rounded-lg border border-line object-cover"
+                          controls
+                          muted
+                          playsInline
+                        >
+                          Your browser does not support the video tag.
+                        </video>
+                      ) : (
+                        <img 
+                          src={formData.imageUrl} 
+                          alt="Preview" 
+                          className="max-w-xs max-h-48 rounded-lg border border-line object-cover" 
+                          loading="lazy"
+                          onError={(e) => {
+                            // Hide broken images
+                            (e.target as HTMLImageElement).style.display = 'none';
+                          }}
+                          onLoad={(e) => {
+                            // Show image when loaded successfully
+                            (e.target as HTMLImageElement).style.display = 'block';
+                          }}
+                        />
+                      )}
                     </div>
                   )}
                 </div>
@@ -875,64 +1059,95 @@ export default function Marketing() {
                   </select>
                 </div> */}
 
-                <div>
-                  <label className="block text-sm font-semibold text-ink mb-2">Start Date</label>
-                  <input
-                    type="datetime-local"
-                    value={formData.start_date}
-                    onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
-                    className="w-full px-3 py-2 border border-line rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-aqua-5/20"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-ink mb-2">End Date</label>
-                  <input
-                    type="datetime-local"
-                    value={formData.end_date}
-                    onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
-                    className="w-full px-3 py-2 border border-line rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-aqua-5/20"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-ink mb-2">Budget</label>
-                  <div className="flex gap-2">
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={formData.budget}
-                      onChange={(e) => setFormData({ ...formData, budget: e.target.value })}
-                      placeholder="0.00"
-                      className="flex-1 px-3 py-2 border border-line rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-aqua-5/20"
-                    />
-                    <select
-                      value={formData.currency}
-                      onChange={(e) => setFormData({ ...formData, currency: e.target.value })}
-                      className="px-3 py-2 border border-line rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-aqua-5/20"
-                    >
-                      <option value="EUR">EUR</option>
-                      <option value="USD">USD</option>
-                      <option value="GBP">GBP</option>
-                    </select>
-                  </div>
-                </div>
-
-                    <div className="md:col-span-2">
+                <div className="md:col-span-2">
                   <label className="block text-sm font-semibold text-ink mb-2">
-                    Target Link <span className="text-red-500">*</span>
+                    Target Link (Optional)
                   </label>
-                      <input
+                  <input
                     type="url"
                     value={formData.target_link}
                     onChange={(e) => setFormData({ ...formData, target_link: e.target.value })}
-                    placeholder="https://example.com"
+                    placeholder="https://example.com (optional)"
+                    className="w-full px-3 py-2 border border-line rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-aqua-5/20"
+                  />
+                  <p className="text-xs text-muted mt-1">
+                    Optional: If not specified, the ad will not be clickable
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-ink mb-2">
+                    Price (€) (Optional)
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-muted">€</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={formData.price}
+                      onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                      placeholder="0"
+                      className="flex-1 px-3 py-2 border border-line rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-aqua-5/20"
+                    />
+                  </div>
+                  <p className="text-xs text-muted mt-1">
+                    Optional: whole euros only (e.g. 400). If not set, price is calculated from type and duration.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-ink mb-2">
+                    Position (Optional)
+                  </label>
+                  <select
+                    value={formData.position}
+                    onChange={(e) => setFormData({ ...formData, position: e.target.value })}
+                    className="w-full px-3 py-2 border border-line rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-aqua-5/20"
+                  >
+                    <option value="">None (Auto)</option>
+                    <option value="HEADER">Header</option>
+                    <option value="HEADER_LEADERBOARD">Sidebar</option>
+                    <option value="SIDEBAR">Sidebar Rectangle</option>
+                    <option value="SIDEBAR_RECT">Inline Article (inside news article)</option>
+                    <option value="INLINE_ARTICLE">Mid Page (homepage, one slot)</option>
+                    <option value="MID_PAGE">Between Sections 1 (homepage)</option>
+                    <option value="BETWEEN_SECTIONS_1">Between Sections 2 (homepage)</option>
+                    <option value="BETWEEN_SECTIONS_2">Between Sections 3 (homepage)</option>
+                    <option value="BETWEEN_SECTIONS_3">Footer</option>
+                    <option value="FOOTER">Mobile</option>
+                    <option value="MOBILE">Mobile</option>
+                  </select>
+                  <p className="text-xs text-muted mt-1">
+                    Optional: Specify a position to book a specific slot. If not specified, ad will be auto-assigned based on type.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-ink mb-2">
+                    Start Date <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={formData.startDate}
+                    onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
                     required
-                        className="w-full px-3 py-2 border border-line rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-aqua-5/20"
-                      />
-                  <p className="text-xs text-muted mt-1">The URL where users will be redirected when clicking the ad</p>
-                    </div>
+                    className="w-full px-3 py-2 border border-line rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-aqua-5/20"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-ink mb-2">
+                    End Date <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={formData.endDate}
+                    onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
+                    required
+                    className="w-full px-3 py-2 border border-line rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-aqua-5/20"
+                  />
+                </div>
 
                     <div className="md:col-span-2">
                   <label className="block text-sm font-semibold text-ink mb-2">Target Audience</label>
@@ -1026,6 +1241,15 @@ export default function Marketing() {
           </div>
         </div>
       )}
+
+      {/* Media Library Modal */}
+      <MediaLibrary
+        isOpen={showMediaLibrary}
+        onClose={() => setShowMediaLibrary(false)}
+        onSelect={(url) => {
+          setFormData({ ...formData, imageUrl: url });
+        }}
+      />
     </div>
   );
 }

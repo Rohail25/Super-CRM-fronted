@@ -79,17 +79,7 @@ export default function Leads() {
     scheduled_at: '',
     outcome: '',
   });
-
-  const categories = [
-    'Hotel',
-    'B&B',
-    'Farmacia',
-    'Oculista',
-    'Ortopedico',
-    'Aziende vinicole',
-    'Salumificio',
-    'Doctors, baby hotel, etc.'
-  ];
+  const [categories, setCategories] = useState<Array<{ id: number; name: string }>>([]);
 
   // Debounce search
   useEffect(() => {
@@ -103,6 +93,65 @@ export default function Leads() {
   useEffect(() => {
     fetchLeads();
   }, [filters.status, filters.source, filters.category]);
+
+  useEffect(() => {
+    fetchCategories();
+  }, []);
+
+  const fetchCategories = async () => {
+    try {
+      const response = await api.get('/categories');
+      setCategories(response.data || []);
+    } catch (error) {
+      console.error('Failed to fetch categories:', error);
+      setCategories([]);
+    }
+  };
+
+  const handleExport = async () => {
+    try {
+      // Build query params from current filters
+      const params = new URLSearchParams();
+      
+      if (filters.status !== 'all') {
+        params.append('status', filters.status);
+      }
+      if (filters.source !== 'all') {
+        params.append('source', filters.source);
+      }
+      if (filters.category !== 'all') {
+        params.append('category', filters.category);
+      }
+      if (filters.search) {
+        params.append('search', filters.search);
+      }
+
+      const queryString = params.toString();
+      const url = `/leads/export${queryString ? '?' + queryString : ''}`;
+
+      const response = await api.get(url, {
+        responseType: 'blob',
+      });
+
+      // Create blob URL and trigger download
+      const blob = new Blob([response.data], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      const url_blob = window.URL.createObjectURL(blob);
+      link.href = url_blob;
+      
+      // Generate filename with timestamp
+      const timestamp = new Date().toISOString().split('T')[0];
+      link.setAttribute('download', `leads_export_${timestamp}.csv`);
+      
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url_blob);
+    } catch (error: any) {
+      console.error('Failed to export leads:', error);
+      alert(error.response?.data?.message || 'Failed to export leads. Please try again.');
+    }
+  };
 
   const fetchLeads = async () => {
     try {
@@ -424,16 +473,19 @@ export default function Leads() {
         subtitle={t('leads.title')}
         actions={
           <>
-            <button className="px-4 py-2 text-sm border border-line rounded-xl hover:bg-aqua-1/30 transition-colors text-ink font-medium">
+            <button 
+              onClick={handleExport}
+              className="px-4 py-2 text-sm border border-line rounded-xl hover:bg-aqua-1/30 transition-colors text-ink font-medium"
+            >
               {t('common.export', 'Export')}
             </button>
             {isSuperAdmin && (
-              <button 
-                onClick={() => navigate('/emails')}
-                className="px-4 py-2 text-sm border border-purple-5/35 bg-gradient-to-r from-purple-3/45 to-purple-5/14 rounded-xl hover:shadow-lg hover:shadow-purple-5/10 transition-all text-ink font-semibold"
-              >
-                📧 Email Bulk
-              </button>
+            <button 
+              onClick={() => navigate('/emails')}
+              className="px-4 py-2 text-sm border border-purple-5/35 bg-gradient-to-r from-purple-3/45 to-purple-5/14 rounded-xl hover:shadow-lg hover:shadow-purple-5/10 transition-all text-ink font-semibold"
+            >
+              📧 Email Bulk
+            </button>
             )}
             <button 
               onClick={() => setShowCreateModal(true)}
@@ -473,7 +525,7 @@ export default function Leads() {
           >
             <option value="all">{t('common.all')} {t('common.category')}</option>
             {categories.map((cat) => (
-              <option key={cat} value={cat}>{cat}</option>
+              <option key={cat.id} value={cat.name}>{cat.name}</option>
             ))}
           </select>
           <button 
@@ -617,7 +669,7 @@ export default function Leads() {
                 >
                   <option value="">{t('leads.selectCategory')}</option>
                   {categories.map((cat) => (
-                    <option key={cat} value={cat}>{cat}</option>
+                    <option key={cat.id} value={cat.name}>{cat.name}</option>
                   ))}
                 </select>
               </div>

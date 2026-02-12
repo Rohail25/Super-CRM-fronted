@@ -273,7 +273,7 @@ export default function Register() {
           </div>
 
           
-          {projects.length > 0 && (
+          {/* {projects.length > 0 && (
             <div className="pb-6">
               <h2 className="text-lg font-semibold text-ink mb-2">Select Projects (Optional)</h2>
               <p className="text-sm text-muted mb-4">
@@ -350,7 +350,7 @@ export default function Register() {
                 </p>
               )}
               </div>
-          )}
+          )} */}
 
           <div className="flex items-center justify-between">
             <Link to="/login" className="text-cyan-500 hover:text-cyan-600 text-sm">

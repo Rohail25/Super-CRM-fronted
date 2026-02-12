@@ -198,12 +198,12 @@ export default function DoctorProject() {
           <h1 className="text-xl font-bold text-ink">Doctor Project</h1>
         </div>
         {!isSuperAdmin && (
-          <button
-            onClick={handleTryNow}
-            className="px-4 py-2 text-sm border border-aqua-5/35 bg-gradient-to-r from-aqua-3/45 to-aqua-5/14 rounded-xl hover:shadow-lg hover:shadow-aqua-5/10 transition-all text-ink font-semibold"
-          >
-            Want to Try
-          </button>
+        <button
+          onClick={handleTryNow}
+          className="px-4 py-2 text-sm border border-aqua-5/35 bg-gradient-to-r from-aqua-3/45 to-aqua-5/14 rounded-xl hover:shadow-lg hover:shadow-aqua-5/10 transition-all text-ink font-semibold"
+        >
+          Want to Try
+        </button>
         )}
       </div>
 
@@ -484,7 +484,7 @@ export default function DoctorProject() {
             <p className="text-sm text-muted mb-4">
               The login page has been opened in a new tab. Use the credentials below to sign in:
             </p>
-            
+
             <div className="space-y-3">
               <div>
                 <label className="block text-sm font-medium text-muted mb-1">Email Address</label>
