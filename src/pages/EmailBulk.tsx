@@ -20,24 +20,13 @@ interface EmailRecord {
   created_at: string;
 }
 
-const categories = [
-  'Hotel',
-  'B&B',
-  'Farmacia',
-  'Oculista',
-  'Ortopedico',
-  'Aziende vinicole',
-  'Salumificio',
-  'Doctors',
-  'Baby Hotel',
-];
-
 export default function EmailBulk() {
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
   const isSuperAdmin = user?.role === 'super_admin';
   const [emails, setEmails] = useState<EmailRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [categories, setCategories] = useState<Array<{ id: number; name: string }>>([]);
   const [filters, setFilters] = useState({
     category: 'all',
     status: 'all',
@@ -76,9 +65,23 @@ export default function EmailBulk() {
       return;
     }
     if (user && isSuperAdmin) {
-      fetchEmails();
+    fetchEmails();
     }
   }, [filters.category, filters.status, filters.search, pagination.current_page, user, isSuperAdmin, navigate]);
+
+  useEffect(() => {
+    fetchCategories();
+  }, []);
+
+  const fetchCategories = async () => {
+    try {
+      const response = await api.get('/categories');
+      setCategories(response.data || []);
+    } catch (error) {
+      console.error('Failed to fetch categories:', error);
+      setCategories([]);
+    }
+  };
 
   const fetchEmails = async () => {
     try {
@@ -144,13 +147,35 @@ export default function EmailBulk() {
         },
       });
 
-      alert(
-        `Upload successful!\nTotal: ${response.data.total}\nSuccessful: ${response.data.successful}\nFailed: ${response.data.failed}`
-      );
-
-      if (response.data.errors && response.data.errors.length > 0) {
-        console.warn('Upload errors:', response.data.errors);
+      // Build result message
+      let message = `Upload completed!\n\nTotal rows: ${response.data.total_rows || response.data.total}\n`;
+      message += `✅ Successfully uploaded: ${response.data.successful}\n`;
+      if (response.data.skipped > 0) {
+        message += `⏭️ Skipped (already exist): ${response.data.skipped}\n`;
       }
+      if (response.data.failed > 0) {
+        message += `❌ Failed: ${response.data.failed}\n`;
+      }
+
+      // Show skipped emails if any
+      if (response.data.skipped_emails && response.data.skipped_emails.length > 0) {
+        const skippedList = response.data.skipped_emails.slice(0, 10).join('\n');
+        const moreSkipped = response.data.skipped_emails.length > 10 
+          ? `\n... and ${response.data.skipped_emails.length - 10} more` 
+          : '';
+        message += `\n\nSkipped emails (already exist):\n${skippedList}${moreSkipped}`;
+      }
+
+      // Show errors if any
+      if (response.data.errors && response.data.errors.length > 0) {
+        const errorList = response.data.errors.slice(0, 10).join('\n');
+        const moreErrors = response.data.errors.length > 10 
+          ? `\n... and ${response.data.errors.length - 10} more errors` 
+          : '';
+        message += `\n\nErrors:\n${errorList}${moreErrors}`;
+      }
+
+      alert(message);
 
       setShowUploadModal(false);
       setUploadFormData({ file: null, category: '' });
@@ -265,8 +290,8 @@ export default function EmailBulk() {
               >
                 <option value="all">All Categories</option>
                 {categories.map((cat) => (
-                  <option key={cat} value={cat}>
-                    {cat}
+                  <option key={cat.id} value={cat.name}>
+                    {cat.name}
                   </option>
                 ))}
               </select>
@@ -488,8 +513,8 @@ export default function EmailBulk() {
             >
               <option value="">Select Category</option>
               {categories.map((cat) => (
-                <option key={cat} value={cat}>
-                  {cat}
+                <option key={cat.id} value={cat.name}>
+                  {cat.name}
                 </option>
               ))}
             </select>
@@ -596,8 +621,8 @@ export default function EmailBulk() {
               >
                 <option value="">Select Category</option>
                 {categories.map((cat) => (
-                  <option key={cat} value={cat}>
-                    {cat}
+                  <option key={cat.id} value={cat.name}>
+                    {cat.name}
                   </option>
                 ))}
               </select>

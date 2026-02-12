@@ -42,6 +42,7 @@ export default function Sidebar({ iconOnly = false }: SidebarProps) {
     { path: '/support', label: 'Support', icon: '🛠️', badge: null, roles: ['super_admin', 'company_admin', 'manager', 'staff'] },
     { path: '/marketing', label: 'Marketing', icon: '📢', roles: ['super_admin', 'company_admin', 'manager'] },
     { path: '/customers', label: 'Customers', icon: '👥', roles: ['super_admin', 'company_admin', 'manager', 'staff'] },
+    { path: '/categories', label: 'Categories', icon: '🏷️', roles: ['super_admin', 'company_admin', 'manager'] },
     { path: '/projects', label: 'Projects', icon: '🔗', roles: ['super_admin', 'company_admin', 'manager'] },
     { path: '/project-management', label: 'Project Management', icon: '🔐', roles: ['super_admin'] },
     { path: '/companies', label: 'Companies', icon: '🏢', roles: ['super_admin'] },
