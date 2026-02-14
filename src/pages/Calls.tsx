@@ -1,6 +1,9 @@
 import { useEffect, useState, useRef } from 'react';
 import Topbar from '../components/layout/Topbar';
 import api from '../services/api';
+import { useAuthStore } from '../stores/authStore';
+import Modal from '../components/ui/Modal';
+import MediaLibrary from '../components/media/MediaLibrary';
 
 interface CallStats {
   calls_to_do: number;
@@ -77,6 +80,9 @@ interface PaginatedCalls {
 }
 
 export default function Calls() {
+  const user = useAuthStore((state) => state.user);
+  const isSuperAdmin = user?.role === 'super_admin';
+  
   const [stats, setStats] = useState<CallStats | null>(null);
   const [callsToday, setCallsToday] = useState<CallToday[]>([]);
   const [operators, setOperators] = useState<Operator[]>([]);
@@ -89,6 +95,17 @@ export default function Calls() {
   const [showStartCallingModal, setShowStartCallingModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingCall, setEditingCall] = useState<Call | null>(null);
+  const [showSMSModal, setShowSMSModal] = useState(false);
+  const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
+  const [selectedCallForMessage, setSelectedCallForMessage] = useState<Call | null>(null);
+  const [smsMessage, setSmsMessage] = useState('');
+  const [whatsAppMessage, setWhatsAppMessage] = useState('');
+  const [smsMediaUrls, setSmsMediaUrls] = useState<string[]>([]);
+  const [whatsAppMediaUrls, setWhatsAppMediaUrls] = useState<string[]>([]);
+  const [sendingSMS, setSendingSMS] = useState(false);
+  const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
+  const [showMediaLibrary, setShowMediaLibrary] = useState(false);
+  const [mediaLibraryFor, setMediaLibraryFor] = useState<'sms' | 'whatsapp' | null>(null);
   const [importMode, setImportMode] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importing, setImporting] = useState(false);
@@ -273,6 +290,82 @@ export default function Calls() {
       console.error('Failed to delete call:', error);
       alert(error.response?.data?.message || 'Failed to delete call. Please try again.');
     }
+  };
+
+  const handleSendSMS = async () => {
+    if (!selectedCallForMessage || !smsMessage.trim()) {
+      alert('Please enter a message');
+      return;
+    }
+
+    try {
+      setSendingSMS(true);
+      const payload: any = {
+        message: smsMessage,
+        phone_number: selectedCallForMessage.contact_phone,
+      };
+
+      if (smsMediaUrls.length > 0) {
+        payload.media_urls = smsMediaUrls;
+      }
+
+      await api.post(`/calls/${selectedCallForMessage.id}/sms`, payload);
+      alert('SMS sent successfully!');
+      setShowSMSModal(false);
+      setSmsMessage('');
+      setSmsMediaUrls([]);
+      setSelectedCallForMessage(null);
+      fetchAllCalls();
+      fetchData();
+    } catch (error: any) {
+      console.error('Failed to send SMS:', error);
+      alert(error.response?.data?.message || 'Failed to send SMS. Please check Twilio configuration.');
+    } finally {
+      setSendingSMS(false);
+    }
+  };
+
+  const handleSendWhatsApp = async () => {
+    if (!selectedCallForMessage || !whatsAppMessage.trim()) {
+      alert('Please enter a message');
+      return;
+    }
+
+    try {
+      setSendingWhatsApp(true);
+      const payload: any = {
+        message: whatsAppMessage,
+        phone_number: selectedCallForMessage.contact_phone,
+      };
+
+      if (whatsAppMediaUrls.length > 0) {
+        payload.media_urls = whatsAppMediaUrls;
+      }
+
+      await api.post(`/calls/${selectedCallForMessage.id}/whatsapp`, payload);
+      alert('WhatsApp message sent successfully!');
+      setShowWhatsAppModal(false);
+      setWhatsAppMessage('');
+      setWhatsAppMediaUrls([]);
+      setSelectedCallForMessage(null);
+      fetchAllCalls();
+      fetchData();
+    } catch (error: any) {
+      console.error('Failed to send WhatsApp:', error);
+      alert(error.response?.data?.message || 'Failed to send WhatsApp message. Please check Twilio configuration.');
+    } finally {
+      setSendingWhatsApp(false);
+    }
+  };
+
+  const handleMediaSelect = (url: string) => {
+    if (mediaLibraryFor === 'sms') {
+      setSmsMediaUrls([...smsMediaUrls, url]);
+    } else if (mediaLibraryFor === 'whatsapp') {
+      setWhatsAppMediaUrls([...whatsAppMediaUrls, url]);
+    }
+    setShowMediaLibrary(false);
+    setMediaLibraryFor(null);
   };
 
   const handleExportTemplate = async () => {
@@ -561,7 +654,7 @@ export default function Calls() {
                       </td>
                       <td className="py-3 px-4 text-right">
                         <div className="flex items-center justify-end gap-2">
-                          {call.phone && (
+                          {isSuperAdmin && call.phone && (
                             <button
                               type="button"
                               disabled={initiatingCallId === call.id}
@@ -766,6 +859,34 @@ export default function Calls() {
                       <td className="py-3 px-4 text-muted">{call.user?.name || '-'}</td>
                       <td className="py-3 px-4 text-right">
                         <div className="flex items-center justify-end gap-2">
+                          {isSuperAdmin && call.contact_phone && (
+                            <>
+                              <button
+                                onClick={() => {
+                                  setSelectedCallForMessage(call);
+                                  setSmsMessage('');
+                                  setSmsMediaUrls([]);
+                                  setShowSMSModal(true);
+                                }}
+                                className="p-1.5 hover:bg-blue-100 rounded-lg transition-colors text-blue-600"
+                                title="Send SMS"
+                              >
+                                💬
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setSelectedCallForMessage(call);
+                                  setWhatsAppMessage('');
+                                  setWhatsAppMediaUrls([]);
+                                  setShowWhatsAppModal(true);
+                                }}
+                                className="p-1.5 hover:bg-green-100 rounded-lg transition-colors text-green-600"
+                                title="Send WhatsApp"
+                              >
+                                📱
+                              </button>
+                            </>
+                          )}
                           <button
                             onClick={() => handleEdit(call)}
                             className="px-3 py-1.5 text-xs border border-line rounded-lg hover:bg-aqua-1/30 transition-colors text-ink font-medium"
@@ -1445,6 +1566,190 @@ export default function Calls() {
           </div>
         </div>
       )}
+
+      {/* SMS Modal */}
+      <Modal
+        isOpen={showSMSModal}
+        onClose={() => {
+          setShowSMSModal(false);
+          setSmsMessage('');
+          setSmsMediaUrls([]);
+          setSelectedCallForMessage(null);
+        }}
+        title="Send SMS"
+        size="md"
+      >
+        {selectedCallForMessage && (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-ink mb-2">
+                To: {selectedCallForMessage.contact_name || 'Unknown'} ({selectedCallForMessage.contact_phone})
+              </label>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-ink mb-2">
+                Message *
+              </label>
+              <textarea
+                value={smsMessage}
+                onChange={(e) => setSmsMessage(e.target.value)}
+                rows={6}
+                className="w-full px-3 py-2 border border-line rounded-lg focus:outline-none focus:ring-2 focus:ring-aqua-5"
+                placeholder="Enter your SMS message..."
+              />
+              <p className="text-xs text-muted mt-1">
+                {smsMessage.length} / 1600 characters
+              </p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-ink mb-2">
+                Images/Media
+              </label>
+              {smsMediaUrls.length > 0 && (
+                <div className="mb-2 space-y-2">
+                  {smsMediaUrls.map((url, index) => (
+                    <div key={index} className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg">
+                      <img src={url} alt={`Media ${index + 1}`} className="w-16 h-16 object-cover rounded" />
+                      <button
+                        onClick={() => setSmsMediaUrls(smsMediaUrls.filter((_, i) => i !== index))}
+                        className="text-red-600 hover:text-red-800"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <button
+                onClick={() => {
+                  setMediaLibraryFor('sms');
+                  setShowMediaLibrary(true);
+                }}
+                className="px-3 py-2 text-sm border border-line rounded-lg hover:bg-aqua-1/30 transition-colors text-ink font-medium"
+              >
+                📷 Add Image/Video
+              </button>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => {
+                  setShowSMSModal(false);
+                  setSmsMessage('');
+                  setSmsMediaUrls([]);
+                  setSelectedCallForMessage(null);
+                }}
+                className="px-4 py-2 text-sm border border-line rounded-lg hover:bg-gray-50 transition-colors text-ink font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSendSMS}
+                disabled={sendingSMS || !smsMessage.trim()}
+                className="px-4 py-2 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {sendingSMS ? 'Sending...' : 'Send SMS'}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* WhatsApp Modal */}
+      <Modal
+        isOpen={showWhatsAppModal}
+        onClose={() => {
+          setShowWhatsAppModal(false);
+          setWhatsAppMessage('');
+          setWhatsAppMediaUrls([]);
+          setSelectedCallForMessage(null);
+        }}
+        title="Send WhatsApp Message"
+        size="md"
+      >
+        {selectedCallForMessage && (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-ink mb-2">
+                To: {selectedCallForMessage.contact_name || 'Unknown'} ({selectedCallForMessage.contact_phone})
+              </label>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-ink mb-2">
+                Message *
+              </label>
+              <textarea
+                value={whatsAppMessage}
+                onChange={(e) => setWhatsAppMessage(e.target.value)}
+                rows={6}
+                className="w-full px-3 py-2 border border-line rounded-lg focus:outline-none focus:ring-2 focus:ring-aqua-5"
+                placeholder="Enter your WhatsApp message..."
+              />
+              <p className="text-xs text-muted mt-1">
+                {whatsAppMessage.length} / 1600 characters
+              </p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-ink mb-2">
+                Images/Media
+              </label>
+              {whatsAppMediaUrls.length > 0 && (
+                <div className="mb-2 space-y-2">
+                  {whatsAppMediaUrls.map((url, index) => (
+                    <div key={index} className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg">
+                      <img src={url} alt={`Media ${index + 1}`} className="w-16 h-16 object-cover rounded" />
+                      <button
+                        onClick={() => setWhatsAppMediaUrls(whatsAppMediaUrls.filter((_, i) => i !== index))}
+                        className="text-red-600 hover:text-red-800"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <button
+                onClick={() => {
+                  setMediaLibraryFor('whatsapp');
+                  setShowMediaLibrary(true);
+                }}
+                className="px-3 py-2 text-sm border border-line rounded-lg hover:bg-aqua-1/30 transition-colors text-ink font-medium"
+              >
+                📷 Add Image/Video
+              </button>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => {
+                  setShowWhatsAppModal(false);
+                  setWhatsAppMessage('');
+                  setWhatsAppMediaUrls([]);
+                  setSelectedCallForMessage(null);
+                }}
+                className="px-4 py-2 text-sm border border-line rounded-lg hover:bg-gray-50 transition-colors text-ink font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSendWhatsApp}
+                disabled={sendingWhatsApp || !whatsAppMessage.trim()}
+                className="px-4 py-2 text-sm bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {sendingWhatsApp ? 'Sending...' : 'Send WhatsApp'}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Media Library Modal */}
+      <MediaLibrary
+        isOpen={showMediaLibrary}
+        onClose={() => {
+          setShowMediaLibrary(false);
+          setMediaLibraryFor(null);
+        }}
+        onSelect={handleMediaSelect}
+      />
     </div>
   );
 }
