@@ -107,6 +107,25 @@
     "leadSources": "Origini Lead",
     "salesPipeline": "Pipeline Vendite"
   },
+  "sidebar": {
+    "dashboard": "Dashboard",
+    "sales": "Vendite",
+    "leads": "Lead",
+    "calls": "Chiamate",
+    "support": "Supporto",
+    "marketing": "Marketing",
+    "customers": "Clienti",
+    "categories": "Categorie",
+    "projects": "Progetti",
+    "projectManagement": "Gestione Progetti",
+    "companies": "Aziende",
+    "users": "Utenti",
+    "settings": "Impostazioni",
+    "subscribe": "Abbonati",
+    "logout": "Esci",
+    "enterprisePlatform": "Piattaforma Enterprise",
+    "user": "Utente"
+  },
   "login": {
     "title": "Accedi al tuo account",
     "email": "Indirizzo Email",

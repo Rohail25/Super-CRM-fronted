@@ -45,10 +45,12 @@ export default function EmailBulk() {
   const [sending, setSending] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const sendFileInputRef = useRef<HTMLInputElement>(null);
   const [uploadFormData, setUploadFormData] = useState({
     file: null as File | null,
     category: '',
   });
+  const [sendAttachments, setSendAttachments] = useState<File[]>([]);
 
   const [sendFormData, setSendFormData] = useState({
     selection_type: 'first_n' as 'first_n' | 'selected' | 'category',
@@ -199,21 +201,51 @@ export default function EmailBulk() {
 
     try {
       setSending(true);
-      const payload: any = {
-        subject: sendFormData.subject,
-        message: sendFormData.message,
-        selection_type: sendFormData.selection_type,
-      };
+      const hasAttachments = sendAttachments.length > 0;
+      let response;
 
-      if (sendFormData.selection_type === 'first_n') {
-        payload.first_n = sendFormData.first_n;
-      } else if (sendFormData.selection_type === 'selected') {
-        payload.selected_ids = selectedIds.length > 0 ? selectedIds : sendFormData.selected_ids;
-      } else if (sendFormData.selection_type === 'category') {
-        payload.category_filter = sendFormData.category_filter || filters.category;
+      if (hasAttachments) {
+        const formData = new FormData();
+        formData.append('subject', sendFormData.subject);
+        formData.append('message', sendFormData.message);
+        formData.append('selection_type', sendFormData.selection_type);
+
+        if (sendFormData.selection_type === 'first_n') {
+          formData.append('first_n', String(sendFormData.first_n));
+        } else if (sendFormData.selection_type === 'selected') {
+          const ids = selectedIds.length > 0 ? selectedIds : sendFormData.selected_ids;
+          ids.forEach((id) => formData.append('selected_ids[]', String(id)));
+        } else if (sendFormData.selection_type === 'category') {
+          formData.append('category_filter', sendFormData.category_filter || filters.category);
+        }
+
+        sendAttachments.forEach((file) => {
+          formData.append('attachments[]', file);
+        });
+
+        response = await api.post('/emails/send', formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        });
+      } else {
+        const payload: any = {
+          subject: sendFormData.subject,
+          message: sendFormData.message,
+          selection_type: sendFormData.selection_type,
+        };
+
+        if (sendFormData.selection_type === 'first_n') {
+          payload.first_n = sendFormData.first_n;
+        } else if (sendFormData.selection_type === 'selected') {
+          payload.selected_ids = selectedIds.length > 0 ? selectedIds : sendFormData.selected_ids;
+        } else if (sendFormData.selection_type === 'category') {
+          payload.category_filter = sendFormData.category_filter || filters.category;
+        }
+
+        response = await api.post('/emails/send', payload);
       }
 
-      const response = await api.post('/emails/send', payload);
       alert(
         `Emails queued for sending!\nTotal: ${response.data.total}\nQueued: ${response.data.queued}\nFailed: ${response.data.failed}`
       );
@@ -227,6 +259,10 @@ export default function EmailBulk() {
         subject: '',
         message: '',
       });
+      setSendAttachments([]);
+      if (sendFileInputRef.current) {
+        sendFileInputRef.current.value = '';
+      }
       setSelectedIds([]);
       fetchEmails();
     } catch (error: any) {
@@ -235,6 +271,35 @@ export default function EmailBulk() {
     } finally {
       setSending(false);
     }
+  };
+
+  const handleSendAttachmentSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) {
+      setSendAttachments([]);
+      return;
+    }
+
+    const allowedExtensions = ['pdf', 'xls', 'xlsx', 'doc', 'docx', 'jpg', 'jpeg', 'png'];
+    const maxSizeBytes = 100 * 1024 * 1024;
+    const validFiles: File[] = [];
+
+    files.forEach((file) => {
+      const extension = file.name.split('.').pop()?.toLowerCase() || '';
+      if (!allowedExtensions.includes(extension)) {
+        return;
+      }
+      if (file.size > maxSizeBytes) {
+        return;
+      }
+      validFiles.push(file);
+    });
+
+    if (validFiles.length !== files.length) {
+      alert('Some files were skipped. Allowed: pdf, xls, xlsx, doc, docx, jpg, jpeg, png. Max 100MB each.');
+    }
+
+    setSendAttachments(validFiles);
   };
 
   const toggleSelect = (id: number) => {
@@ -559,7 +624,13 @@ export default function EmailBulk() {
       {/* Send Email Modal */}
       <Modal
         isOpen={showSendModal}
-        onClose={() => setShowSendModal(false)}
+        onClose={() => {
+          setShowSendModal(false);
+          setSendAttachments([]);
+          if (sendFileInputRef.current) {
+            sendFileInputRef.current.value = '';
+          }
+        }}
         title="Send Bulk Email"
         size="xl"
       >
@@ -671,9 +742,37 @@ export default function EmailBulk() {
             />
           </div>
 
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Attachments (optional)
+            </label>
+            <input
+              ref={sendFileInputRef}
+              type="file"
+              multiple
+              accept=".pdf,.xls,.xlsx,.doc,.docx,.jpg,.jpeg,.png"
+              onChange={handleSendAttachmentSelect}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+            <p className="mt-2 text-xs text-gray-500">
+              Max 100MB each. Allowed: pdf, xls, xlsx, doc, docx, jpg, jpeg, png.
+            </p>
+            {sendAttachments.length > 0 && (
+              <div className="mt-2 text-sm text-gray-600">
+                Selected: {sendAttachments.map((file) => file.name).join(', ')}
+              </div>
+            )}
+          </div>
+
           <div className="flex justify-end gap-2 pt-4">
             <Button
-              onClick={() => setShowSendModal(false)}
+              onClick={() => {
+                setShowSendModal(false);
+                setSendAttachments([]);
+                if (sendFileInputRef.current) {
+                  sendFileInputRef.current.value = '';
+                }
+              }}
               variant="secondary"
             >
               Cancel

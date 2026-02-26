@@ -91,7 +91,9 @@ export default function Calls() {
   const [loadingCalls, setLoadingCalls] = useState(false);
   const [initiatingCallId, setInitiatingCallId] = useState<number | null>(null);
   const [showCallModal, setShowCallModal] = useState(false);
+  const [showViewModal, setShowViewModal] = useState(false);
   const [selectedCall, setSelectedCall] = useState<CallToday | null>(null);
+  const [viewCallDetails, setViewCallDetails] = useState<Call | null>(null);
   const [showStartCallingModal, setShowStartCallingModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingCall, setEditingCall] = useState<Call | null>(null);
@@ -483,19 +485,32 @@ export default function Calls() {
     }
   };
 
-  const handleCallClick = (call: CallToday) => {
-    setSelectedCall(call);
-    setShowCallModal(true);
-    // Reset form
-    setCallFormDataComplete({
-      outcome: 'successful',
-      notes: '',
-      next_action: '',
-      callback_at: '',
-      converted_to_opportunity: false,
-      value: '',
-      duration_seconds: '',
-    });
+  const handleCallClick = async (call: CallToday) => {
+    if (isSuperAdmin) {
+      // Super admin can edit - show editable modal
+      setSelectedCall(call);
+      setShowCallModal(true);
+      // Reset form
+      setCallFormDataComplete({
+        outcome: 'successful',
+        notes: '',
+        next_action: '',
+        callback_at: '',
+        converted_to_opportunity: false,
+        value: '',
+        duration_seconds: '',
+      });
+    } else {
+      // Non-super admin can only view - fetch full call details and show read-only modal
+      try {
+        const response = await api.get(`/calls/${call.id}`);
+        setViewCallDetails(response.data);
+        setShowViewModal(true);
+      } catch (error) {
+        console.error('Failed to fetch call details:', error);
+        alert('Failed to load call details. Please try again.');
+      }
+    }
   };
 
   const handleCompleteCall = async () => {
@@ -707,7 +722,10 @@ export default function Calls() {
                             }}
                             className="px-3 py-1.5 text-xs border border-line rounded-lg hover:bg-aqua-1/30 transition-colors text-ink font-medium"
                           >
-                            {call.status === 'completed' ? 'VIEW' : 'COMPLETE'}
+                            {isSuperAdmin 
+                              ? (call.status === 'completed' ? 'VIEW' : 'COMPLETE')
+                              : 'VIEW'
+                            }
                           </button>
                         </div>
                       </td>
@@ -887,18 +905,22 @@ export default function Calls() {
                               </button>
                             </>
                           )}
-                          <button
-                            onClick={() => handleEdit(call)}
-                            className="px-3 py-1.5 text-xs border border-line rounded-lg hover:bg-aqua-1/30 transition-colors text-ink font-medium"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => handleDelete(call.id)}
-                            className="px-3 py-1.5 text-xs border border-red-300 rounded-lg hover:bg-red-50 transition-colors text-red-600 font-medium"
-                          >
-                            Delete
-                          </button>
+                          {isSuperAdmin && (
+                            <button
+                              onClick={() => handleEdit(call)}
+                              className="px-3 py-1.5 text-xs border border-line rounded-lg hover:bg-aqua-1/30 transition-colors text-ink font-medium"
+                            >
+                              Edit
+                            </button>
+                          )}
+                          {isSuperAdmin && (
+                            <button
+                              onClick={() => handleDelete(call.id)}
+                              className="px-3 py-1.5 text-xs border border-red-300 rounded-lg hover:bg-red-50 transition-colors text-red-600 font-medium"
+                            >
+                              Delete
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -1448,8 +1470,96 @@ export default function Calls() {
         </div>
       )}
 
-      {/* Call Completion Modal */}
-      {showCallModal && selectedCall && (
+      {/* View Call Modal (Read-only for non-super_admin) */}
+      {showViewModal && viewCallDetails && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <h2 className="text-xl font-bold text-ink mb-4">Call Details</h2>
+            <p className="text-muted mb-6">
+              Call with <strong>{viewCallDetails.contact_name || viewCallDetails.customer?.first_name || 'Unknown'}</strong> ({viewCallDetails.contact_phone || viewCallDetails.customer?.phone || 'No phone'})
+            </p>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-ink mb-2">Status</label>
+                <div className="px-3 py-2 border border-line rounded-lg bg-gray-50 text-ink">
+                  {viewCallDetails.status}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-ink mb-2">Outcome</label>
+                <div className="px-3 py-2 border border-line rounded-lg bg-gray-50 text-ink">
+                  {viewCallDetails.outcome || 'N/A'}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-ink mb-2">Notes</label>
+                <div className="px-3 py-2 border border-line rounded-lg bg-gray-50 text-ink min-h-[60px]">
+                  {viewCallDetails.notes || 'No notes'}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-ink mb-2">Next Action</label>
+                <div className="px-3 py-2 border border-line rounded-lg bg-gray-50 text-ink">
+                  {viewCallDetails.next_action || 'N/A'}
+                </div>
+              </div>
+
+              {viewCallDetails.callback_at && (
+                <div>
+                  <label className="block text-sm font-medium text-ink mb-2">Callback Date/Time</label>
+                  <div className="px-3 py-2 border border-line rounded-lg bg-gray-50 text-ink">
+                    {new Date(viewCallDetails.callback_at).toLocaleString()}
+                  </div>
+                </div>
+              )}
+
+              {viewCallDetails.duration_seconds && (
+                <div>
+                  <label className="block text-sm font-medium text-ink mb-2">Duration</label>
+                  <div className="px-3 py-2 border border-line rounded-lg bg-gray-50 text-ink">
+                    {viewCallDetails.duration_seconds} seconds
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-sm font-medium text-ink mb-2">Converted to Opportunity</label>
+                <div className="px-3 py-2 border border-line rounded-lg bg-gray-50 text-ink">
+                  {viewCallDetails.converted_to_opportunity ? 'Yes' : 'No'}
+                </div>
+              </div>
+
+              {viewCallDetails.value && (
+                <div>
+                  <label className="block text-sm font-medium text-ink mb-2">Value</label>
+                  <div className="px-3 py-2 border border-line rounded-lg bg-gray-50 text-ink">
+                    €{viewCallDetails.value.toFixed(2)}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => {
+                  setShowViewModal(false);
+                  setViewCallDetails(null);
+                }}
+                className="flex-1 px-4 py-2 border border-line rounded-xl hover:bg-aqua-1/30 transition-colors text-ink font-medium"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Call Completion Modal (Editable for super_admin only) */}
+      {showCallModal && selectedCall && isSuperAdmin && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-2xl p-6 max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
             <h2 className="text-xl font-bold text-ink mb-4">Complete Call</h2>

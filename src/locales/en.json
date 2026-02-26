@@ -107,6 +107,25 @@
     "leadSources": "Lead Sources",
     "salesPipeline": "Sales Pipeline"
   },
+  "sidebar": {
+    "dashboard": "Dashboard",
+    "sales": "Sales",
+    "leads": "Leads",
+    "calls": "Calls",
+    "support": "Support",
+    "marketing": "Marketing",
+    "customers": "Customers",
+    "categories": "Categories",
+    "projects": "Projects",
+    "projectManagement": "Project Management",
+    "companies": "Companies",
+    "users": "Users",
+    "settings": "Settings",
+    "subscribe": "Subscribe",
+    "logout": "Logout",
+    "enterprisePlatform": "Enterprise Platform",
+    "user": "User"
+  },
   "login": {
     "title": "Sign in to your account",
     "email": "Email Address",

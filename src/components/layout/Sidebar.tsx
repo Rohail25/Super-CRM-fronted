@@ -1,4 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../../stores/authStore';
 
 interface NavItem {
@@ -15,6 +16,7 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ iconOnly = false }: SidebarProps) {
+  const { t } = useTranslation();
   const location = useLocation();
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
@@ -35,19 +37,19 @@ export default function Sidebar({ iconOnly = false }: SidebarProps) {
   };
 
   const navItems: NavItem[] = [
-    { path: '/dashboard', label: 'Dashboard', icon: '📊', roles: ['super_admin', 'company_admin', 'manager', 'staff'] },
-    { path: '/sales', label: 'Sales', icon: '💰', badge: null, roles: ['super_admin', 'company_admin', 'manager', 'staff'] },
-    { path: '/leads', label: 'Leads', icon: '🎯', badge: null, roles: ['super_admin', 'company_admin', 'manager', 'staff'] },
-    { path: '/calls', label: 'Calls', icon: '📞', badge: null, roles: ['super_admin', 'company_admin', 'manager', 'staff'] },
-    { path: '/support', label: 'Support', icon: '🛠️', badge: null, roles: ['super_admin', 'company_admin', 'manager', 'staff'] },
-    { path: '/marketing', label: 'Marketing', icon: '📢', roles: ['super_admin', 'company_admin', 'manager'] },
-    { path: '/customers', label: 'Customers', icon: '👥', roles: ['super_admin', 'company_admin', 'manager', 'staff'] },
-    { path: '/categories', label: 'Categories', icon: '🏷️', roles: ['super_admin', 'company_admin', 'manager'] },
-    { path: '/projects', label: 'Projects', icon: '🔗', roles: ['super_admin', 'company_admin', 'manager'] },
-    { path: '/project-management', label: 'Project Management', icon: '🔐', roles: ['super_admin'] },
-    { path: '/companies', label: 'Companies', icon: '🏢', roles: ['super_admin'] },
-    { path: '/users', label: 'Users', icon: '👤', roles: ['super_admin', 'company_admin'] },
-    { path: '/settings', label: 'Settings', icon: '⚙️', roles: ['super_admin', 'company_admin'] },
+    { path: '/dashboard', label: t('sidebar.dashboard'), icon: '📊', roles: ['super_admin', 'company_admin', 'manager', 'staff'] },
+    { path: '/sales', label: t('sidebar.sales'), icon: '💰', badge: null, roles: ['super_admin', 'company_admin', 'manager', 'staff'] },
+    { path: '/leads', label: t('sidebar.leads'), icon: '🎯', badge: null, roles: ['super_admin', 'company_admin', 'manager', 'staff'] },
+    { path: '/calls', label: t('sidebar.calls'), icon: '📞', badge: null, roles: ['super_admin', 'company_admin', 'manager', 'staff'] },
+    { path: '/support', label: t('sidebar.support'), icon: '🛠️', badge: null, roles: ['super_admin', 'company_admin', 'manager', 'staff'] },
+    { path: '/marketing', label: t('sidebar.marketing'), icon: '📢', roles: ['super_admin', 'company_admin', 'manager'] },
+    { path: '/customers', label: t('sidebar.customers'), icon: '👥', roles: ['super_admin', 'company_admin', 'manager', 'staff'] },
+    { path: '/categories', label: t('sidebar.categories'), icon: '🏷️', roles: ['super_admin', 'company_admin', 'manager'] },
+    { path: '/projects', label: t('sidebar.projects'), icon: '🔗', roles: ['super_admin', 'company_admin', 'manager'] },
+    { path: '/project-management', label: t('sidebar.projectManagement'), icon: '🔐', roles: ['super_admin'] },
+    { path: '/companies', label: t('sidebar.companies'), icon: '🏢', roles: ['super_admin'] },
+    { path: '/users', label: t('sidebar.users'), icon: '👤', roles: ['super_admin', 'company_admin'] },
+    { path: '/settings', label: t('sidebar.settings'), icon: '⚙️', roles: ['super_admin', 'company_admin'] },
   ];
 
   // Add subscription link if company needs subscription
@@ -60,7 +62,7 @@ export default function Sidebar({ iconOnly = false }: SidebarProps) {
   if (needsSubscription && user?.role !== 'super_admin') {
     navItems.push({ 
       path: '/subscribe', 
-      label: 'Subscribe', 
+      label: t('sidebar.subscribe'), 
       icon: '💳', 
       roles: ['company_admin', 'manager', 'staff'] 
     });
@@ -86,7 +88,7 @@ export default function Sidebar({ iconOnly = false }: SidebarProps) {
           {!iconOnly && (
             <div>
               <h1 className="text-base font-bold text-ink leading-tight">LEO24 CRM</h1>
-              <p className="text-xs text-muted leading-tight">Enterprise Platform</p>
+              <p className="text-xs text-muted leading-tight">{t('sidebar.enterprisePlatform')}</p>
             </div>
           )}
         </div>
@@ -125,7 +127,7 @@ export default function Sidebar({ iconOnly = false }: SidebarProps) {
       <div className={`${iconOnly ? 'p-2' : 'p-4'} border-t border-line bg-aqua-1/20`}>
         {!iconOnly && (
           <div className="mb-3">
-            <p className="text-sm font-semibold text-ink mb-0.5">{user?.name || 'User'}</p>
+            <p className="text-sm font-semibold text-ink mb-0.5">{user?.name || t('sidebar.user')}</p>
             <p className="text-xs text-muted mb-1">{user?.email}</p>
             <div className="flex items-center gap-2">
               <span className="text-xs px-2 py-0.5 rounded-full bg-aqua-5/15 text-aqua-5 font-medium capitalize">
@@ -142,9 +144,9 @@ export default function Sidebar({ iconOnly = false }: SidebarProps) {
         <button
           onClick={handleLogout}
           className={`w-full ${iconOnly ? 'px-2 py-2' : 'px-3 py-2'} text-sm border border-line rounded-lg hover:bg-white hover:border-aqua-4/35 transition-colors text-ink font-medium`}
-          title={iconOnly ? 'Logout' : undefined}
+          title={iconOnly ? t('sidebar.logout') : undefined}
         >
-          {iconOnly ? '🚪' : 'Logout'}
+          {iconOnly ? '🚪' : t('sidebar.logout')}
         </button>
       </div>
     </aside>

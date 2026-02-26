@@ -14,7 +14,6 @@ import Customers from './pages/Customers';
 import CustomerDetail from './pages/CustomerDetail';
 import Users from './pages/Users';
 import Settings from './pages/Settings';
-import Categories from './pages/Categories';
 import ProjectIframePage from './pages/ProjectIframePage';
 import DoctorProject from './pages/DoctorProject';
 import TGCalabriaProject from './pages/TGCalabriaProject';
@@ -130,10 +129,6 @@ export const router = createBrowserRouter([
       {
         path: 'users',
         element: <Users />,
-      },
-      {
-        path: 'categories',
-        element: <Categories />,
       },
       {
         path: 'settings',
