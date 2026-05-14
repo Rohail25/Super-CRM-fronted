@@ -89,11 +89,29 @@
     "hot": "Hot",
     "converted": "Converted",
     "lost": "Lost",
-    "noLeadsFound": "No leads found. Upload your first file to get started!",
+    "noLeadsFound": "No contacts yet. Upload a CSV or Excel file to import leads — each row becomes one contact.",
     "deleteConfirm": "Are you sure you want to delete this lead?",
+    "deleteLegacyBatchConfirm": "Delete this import? It removes the whole file record and every row that came from it.",
+    "noPhoneForCall": "No phone number for this contact.",
+    "rowFromImport": "Row {{n}} from file import",
     "uploadSuccess": "File uploaded successfully!",
+    "uploadSuccessCount": "Imported {{count}} contacts from the file.",
     "uploadError": "Failed to upload file. Please try again.",
-    "fileUploadHint": "First row must be headers. Supported formats: CSV, Excel (.xlsx, .xls)"
+    "fileUploadHint": "First row must be headers. Supported formats: CSV, Excel (.xlsx, .xls)",
+    "listSubtitle": "One row per contact. Upload a file to add many leads at once.",
+    "importFiltersTitle": "Import column filters",
+    "importFiltersHelp": "Match your CSV headers (e.g. City, Città, Professione). Leave the column blank to search that text anywhere in the imported row. Multiple rows are combined with AND.",
+    "importFieldLabel": "Column (header)",
+    "importFieldPlaceholder": "e.g. Città, City, Professione",
+    "importValueLabel": "Contains",
+    "importValuePlaceholder": "e.g. Roma, Medico",
+    "addImportFilterRow": "Add filter",
+    "legacyBatch": "Old format: {{count}} rows in one file — open details to see all.",
+    "paginationHint": "Page {{current}} of {{last}} · {{total}} leads",
+    "viewContactTitle": "Contact: {{name}}",
+    "allImportFields": "All fields from import",
+    "embeddedRecordsTitle": "Rows in file ({{count}})",
+    "embeddedRecordsTruncated": "Showing first {{shown}} of {{total}} rows"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -124,7 +142,8 @@
     "subscribe": "Subscribe",
     "logout": "Logout",
     "enterprisePlatform": "Enterprise Platform",
-    "user": "User"
+    "user": "User",
+    "leadsLinkTitle": "Imported contacts — call and follow up per row"
   },
   "login": {
     "title": "Sign in to your account",

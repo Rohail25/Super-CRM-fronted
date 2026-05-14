@@ -1,26 +1,23 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import Topbar from '../components/layout/Topbar';
 import { useAuthStore } from '../stores/authStore';
 import api from '../services/api';
 import Modal from '../components/ui/Modal';
+import type { ApiLead, LeadTableRow } from '../utils/leadTableRows';
+import {
+  expandApiLeadsToTableRows,
+  filterTableRowsBySearch,
+  filterTableRowsByImportFilters,
+  type ImportFilter,
+} from '../utils/leadTableRows';
 
-interface Lead {
-  id: number;
-  name: string;
-  email?: string;
-  phone?: string;
-  source?: string;
-  status: string;
-  category?: string;
-  file_name?: string;
-  file_format?: string;
-  file_headers?: string[];
-  file_records?: any[][];
-  value?: number;
-  created_at: string;
-  assigned_to?: string;
+type Lead = ApiLead;
+
+function displayCell(value?: string | null): string {
+  const s = value != null ? String(value).trim() : '';
+  return s || '—';
 }
 
 interface FollowUp {
@@ -52,9 +49,15 @@ export default function Leads() {
     category: 'all',
     search: '',
   });
+  /** Stacked filters on imported CSV columns (e.g. Città → Roma, Professione → Medico). */
+  const [importFilters, setImportFilters] = useState<ImportFilter[]>([
+    { field: '', value: '' },
+    { field: '', value: '' },
+    { field: '', value: '' },
+  ]);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
-  const [viewingLead, setViewingLead] = useState<Lead | null>(null);
+  const [viewingRow, setViewingRow] = useState<LeadTableRow | null>(null);
   
   // New state for file upload form
   const [uploadFormData, setUploadFormData] = useState({
@@ -69,6 +72,8 @@ export default function Leads() {
   const [whatsAppMessage, setWhatsAppMessage] = useState('');
   const [whatsAppSending, setWhatsAppSending] = useState(false);
   const [selectedLeadId, setSelectedLeadId] = useState<number | null>(null);
+  /** Contact row used for call/WhatsApp and follow-up "start call" (handles legacy file rows). */
+  const [actionContactRow, setActionContactRow] = useState<LeadTableRow | null>(null);
   const [followUps, setFollowUps] = useState<Record<number, FollowUp[]>>({});
   const [_editingFollowUp, setEditingFollowUp] = useState<FollowUp | null>(null);
   const [followUpFormData, setFollowUpFormData] = useState({
@@ -81,22 +86,43 @@ export default function Leads() {
   });
   const [categories, setCategories] = useState<Array<{ id: number; name: string }>>([]);
 
+  const [listPage, setListPage] = useState(1);
+  const [paginationMeta, setPaginationMeta] = useState({
+    current_page: 1,
+    last_page: 1,
+    total: 0,
+  });
+  const [debouncedSearch, setDebouncedSearch] = useState(filters.search);
+  const [debouncedImportFilters, setDebouncedImportFilters] = useState<ImportFilter[]>(importFilters);
+
   // Debounce search
   useEffect(() => {
-    const timer = setTimeout(() => {
-      fetchLeads();
-    }, 300);
-
+    const timer = setTimeout(() => setDebouncedSearch(filters.search), 300);
     return () => clearTimeout(timer);
   }, [filters.search]);
 
   useEffect(() => {
-    fetchLeads();
-  }, [filters.status, filters.source, filters.category]);
+    const timer = setTimeout(() => setDebouncedImportFilters(importFilters), 400);
+    return () => clearTimeout(timer);
+  }, [importFilters]);
+
+  useEffect(() => {
+    setListPage(1);
+  }, [filters.status, filters.source, filters.category, debouncedSearch, debouncedImportFilters]);
+
+  useEffect(() => {
+    void fetchLeads();
+  }, [listPage, filters.status, filters.source, filters.category, debouncedSearch, debouncedImportFilters]);
 
   useEffect(() => {
     fetchCategories();
   }, []);
+
+  const tableRows = useMemo(() => {
+    const expanded = expandApiLeadsToTableRows(leads);
+    const searched = filterTableRowsBySearch(expanded, debouncedSearch);
+    return filterTableRowsByImportFilters(searched, debouncedImportFilters);
+  }, [leads, debouncedSearch, debouncedImportFilters]);
 
   const fetchCategories = async () => {
     try {
@@ -122,8 +148,14 @@ export default function Leads() {
       if (filters.category !== 'all') {
         params.append('category', filters.category);
       }
-      if (filters.search) {
-        params.append('search', filters.search);
+      if (debouncedSearch) {
+        params.append('search', debouncedSearch);
+      }
+      const importPayload = debouncedImportFilters
+        .map((f) => ({ field: f.field.trim(), value: f.value.trim() }))
+        .filter((f) => f.value.length > 0);
+      if (importPayload.length > 0) {
+        params.append('import_filters', JSON.stringify(importPayload));
       }
 
       const queryString = params.toString();
@@ -153,10 +185,11 @@ export default function Leads() {
     }
   };
 
-  const fetchLeads = async () => {
+  const fetchLeads = async (pageOverride?: number) => {
     try {
       setLoading(true);
-      const params: any = {};
+      const page = pageOverride ?? listPage;
+      const params: Record<string, string> = {};
       
       if (filters.status !== 'all') {
         params.status = filters.status;
@@ -170,12 +203,26 @@ export default function Leads() {
         params.category = filters.category;
       }
       
-      if (filters.search) {
-        params.search = filters.search;
+      if (debouncedSearch) {
+        params.search = debouncedSearch;
       }
 
-      const response = await api.get('/leads', { params });
+      const importPayload = debouncedImportFilters
+        .map((f) => ({ field: f.field.trim(), value: f.value.trim() }))
+        .filter((f) => f.value.length > 0);
+      if (importPayload.length > 0) {
+        params.import_filters = JSON.stringify(importPayload);
+      }
+
+      const response = await api.get('/leads', {
+        params: { ...params, page, per_page: 30 },
+      });
       setLeads(response.data.data || []);
+      setPaginationMeta({
+        current_page: response.data.current_page ?? 1,
+        last_page: response.data.last_page ?? 1,
+        total: response.data.total ?? 0,
+      });
     } catch (error) {
       console.error('Failed to fetch leads:', error);
       setLeads([]);
@@ -207,12 +254,18 @@ export default function Leads() {
       });
 
       console.log('Lead file uploaded successfully:', response.data);
-      
+
       setShowCreateModal(false);
       resetUploadForm();
-      await fetchLeads(); // Refresh the list
-      
-      alert(t('leads.uploadSuccess'));
+      await fetchLeads(1);
+      setListPage(1);
+
+      const imported = response.data?.imported_count;
+      if (typeof imported === 'number') {
+        alert(t('leads.uploadSuccessCount', { count: imported }));
+      } else {
+        alert(t('leads.uploadSuccess'));
+      }
     } catch (error: any) {
       console.error('Failed to upload lead file:', error);
       const errorMessage = error.response?.data?.message || 
@@ -223,13 +276,17 @@ export default function Leads() {
     }
   };
 
-  const handleDeleteLead = async (leadId: number) => {
-    if (!confirm(t('leads.deleteConfirm'))) {
+  const handleDeleteLead = async (row: LeadTableRow) => {
+    const confirmMsg =
+      row.legacyRowIndex !== null
+        ? t('leads.deleteLegacyBatchConfirm')
+        : t('leads.deleteConfirm');
+    if (!confirm(confirmMsg)) {
       return;
     }
 
     try {
-      await api.delete(`/leads/${leadId}`);
+      await api.delete(`/leads/${row.dbLeadId}`);
       fetchLeads();
     } catch (error) {
       console.error('Failed to delete lead:', error);
@@ -255,6 +312,28 @@ export default function Leads() {
       category: 'all',
       search: '',
     });
+    setImportFilters([
+      { field: '', value: '' },
+      { field: '', value: '' },
+      { field: '', value: '' },
+    ]);
+  };
+
+    setImportFilters((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], ...patch };
+      return next;
+    });
+  };
+
+  const addImportFilterRow = () => {
+    setImportFilters((prev) => (prev.length >= 6 ? prev : [...prev, { field: '', value: '' }]));
+  };
+
+  const removeImportFilterRow = (index: number) => {
+    setImportFilters((prev) =>
+      prev.length <= 1 ? prev : prev.filter((_, i) => i !== index)
+    );
   };
 
   const fetchFollowUps = async (leadId: number) => {
@@ -320,36 +399,27 @@ export default function Leads() {
     }
   };
 
-  const handleStartCall = async (followUp: FollowUp | null, leadId: number) => {
+  const handleStartCall = async (followUp: FollowUp | null, row: LeadTableRow | null) => {
     try {
-      const lead = leads.find(l => l.id === leadId);
-      if (!lead) {
-        alert('Lead not found');
+      if (!row?.phone?.trim()) {
+        alert(t('leads.noPhoneForCall'));
         return;
       }
 
-      if (!lead.phone) {
-        alert('No phone number available for this lead');
-        return;
-      }
-
-      // Create a call record with status "in_progress"
-      const callPayload: any = {
-        customer_id: leadId, // Lead ID is the customer ID
-        contact_name: lead.name,
-        contact_phone: lead.phone,
-        source: lead.source || 'Direct',
+      // Do not send customer_id: leads are not customers (validation would fail).
+      const callPayload: Record<string, unknown> = {
+        contact_name: row.name,
+        contact_phone: row.phone,
+        source: row.source || 'Leads',
         priority: followUp?.priority || 'medium',
         status: 'in_progress',
         scheduled_at: followUp?.scheduled_at || new Date().toISOString(),
       };
 
-      // Add opportunity_id if available from follow-up
       if (followUp?.opportunity_id) {
         callPayload.opportunity_id = followUp.opportunity_id;
       }
 
-      // Add notes if from follow-up
       if (followUp) {
         callPayload.notes = `Call started from follow-up: ${followUp.title}${followUp.notes ? '\n' + followUp.notes : ''}`;
       } else {
@@ -357,48 +427,45 @@ export default function Leads() {
       }
 
       const response = await api.post('/calls', callPayload);
-      
+
       alert(`Call started! Call ID: ${response.data.id}\n\nYou can complete the call from the Calls page.`);
-      
-      // Optionally navigate to Calls page or refresh follow-ups if called from follow-up modal
+
       if (followUp && selectedLeadId) {
         await fetchFollowUps(selectedLeadId);
       }
-      
     } catch (error: any) {
       console.error('Failed to start call:', error);
       alert(error.response?.data?.message || 'Failed to start call. Please try again.');
     }
   };
 
-  const openWhatsAppModal = (leadId: number) => {
-    setSelectedLeadId(leadId);
+  const openWhatsAppModal = (row: LeadTableRow) => {
+    if (!row.phone?.trim()) {
+      alert(t('leads.noPhoneForCall'));
+      return;
+    }
+    setActionContactRow(row);
     setWhatsAppMessage('');
     setShowWhatsAppModal(true);
   };
 
   const handleSendWhatsApp = async () => {
-    if (!selectedLeadId || !whatsAppMessage.trim()) {
+    if (!actionContactRow?.phone || !whatsAppMessage.trim()) {
       alert('Please enter a message');
-      return;
-    }
-
-    const lead = leads.find(l => l.id === selectedLeadId);
-    if (!lead || !lead.phone) {
-      alert('Lead not found or missing phone number');
       return;
     }
 
     try {
       setWhatsAppSending(true);
       await api.post('/communications/whatsapp/send', {
-        to: lead.phone,
+        to: actionContactRow.phone,
         message: whatsAppMessage,
       });
-      
+
       alert('WhatsApp message sent successfully!');
       setShowWhatsAppModal(false);
       setWhatsAppMessage('');
+      setActionContactRow(null);
     } catch (error: any) {
       console.error('Failed to send WhatsApp message:', error);
       alert(error.response?.data?.message || 'Failed to send WhatsApp message. Please check Twilio configuration.');
@@ -418,12 +485,14 @@ export default function Leads() {
     });
     setEditingFollowUp(null);
     setSelectedLeadId(null);
+    setActionContactRow(null);
   };
 
-  const openFollowUpModal = (leadId: number) => {
-    setSelectedLeadId(leadId);
+  const openFollowUpModal = (row: LeadTableRow) => {
+    setSelectedLeadId(row.dbLeadId);
+    setActionContactRow(row);
     setShowFollowUpModal(true);
-    fetchFollowUps(leadId);
+    fetchFollowUps(row.dbLeadId);
   };
 
   const getFollowUpTypeIcon = (type: FollowUp['type']) => {
@@ -470,7 +539,7 @@ export default function Leads() {
     <div className="space-y-6">
       <Topbar
         title={t('leads.title')}
-        subtitle={t('leads.title')}
+        subtitle={t('leads.listSubtitle')}
         actions={
           <>
             <button 
@@ -535,6 +604,56 @@ export default function Leads() {
             {t('common.clearFilters', 'Clear Filters')}
           </button>
         </div>
+
+        <div className="mt-4 pt-4 border-t border-line">
+          <p className="text-xs font-bold text-muted uppercase tracking-wide mb-1">{t('leads.importFiltersTitle')}</p>
+          <p className="text-xs text-muted mb-3">{t('leads.importFiltersHelp')}</p>
+          <div className="space-y-2">
+            {importFilters.map((row, idx) => (
+              <div key={idx} className="flex flex-wrap items-end gap-2">
+                <div className="flex-1 min-w-[160px]">
+                  <label className="block text-[11px] text-muted mb-0.5">{t('leads.importFieldLabel')}</label>
+                  <input
+                    type="text"
+                    value={row.field}
+                    onChange={(e) => updateImportFilter(idx, { field: e.target.value })}
+                    placeholder={t('leads.importFieldPlaceholder')}
+                    className="w-full px-3 py-2 border border-line rounded-xl focus:border-aqua-5 focus:ring-2 focus:ring-aqua-5/20 outline-none text-sm"
+                  />
+                </div>
+                <div className="flex-1 min-w-[160px]">
+                  <label className="block text-[11px] text-muted mb-0.5">{t('leads.importValueLabel')}</label>
+                  <input
+                    type="text"
+                    value={row.value}
+                    onChange={(e) => updateImportFilter(idx, { value: e.target.value })}
+                    placeholder={t('leads.importValuePlaceholder')}
+                    className="w-full px-3 py-2 border border-line rounded-xl focus:border-aqua-5 focus:ring-2 focus:ring-aqua-5/20 outline-none text-sm"
+                  />
+                </div>
+                {importFilters.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => removeImportFilterRow(idx)}
+                    className="px-2 py-2 text-sm text-muted hover:text-bad border border-line rounded-xl"
+                    title={t('common.delete')}
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+          {importFilters.length < 6 && (
+            <button
+              type="button"
+              onClick={addImportFilterRow}
+              className="mt-2 text-sm font-medium text-aqua-5 hover:underline"
+            >
+              + {t('leads.addImportFilterRow')}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Leads Table */}
@@ -543,82 +662,89 @@ export default function Leads() {
           <table className="w-full">
             <thead className="bg-aqua-1/30 border-b border-line">
               <tr>
-                <th className="text-left text-xs font-bold text-muted uppercase py-3 px-4">{t('leads.fileName')}</th>
-                <th className="text-left text-xs font-bold text-muted uppercase py-3 px-4">{t('leads.fileFormatLabel')}</th>
+                <th className="text-left text-xs font-bold text-muted uppercase py-3 px-4">{t('common.name')}</th>
+                <th className="text-left text-xs font-bold text-muted uppercase py-3 px-4">{t('common.email')}</th>
+                <th className="text-left text-xs font-bold text-muted uppercase py-3 px-4">{t('common.phone')}</th>
                 <th className="text-left text-xs font-bold text-muted uppercase py-3 px-4">{t('common.category')}</th>
-                <th className="text-left text-xs font-bold text-muted uppercase py-3 px-4">{t('leads.fileRecords')}</th>
+                <th className="text-left text-xs font-bold text-muted uppercase py-3 px-4">{t('leads.importFile')}</th>
                 <th className="text-left text-xs font-bold text-muted uppercase py-3 px-4">{t('common.status')}</th>
                 <th className="text-left text-xs font-bold text-muted uppercase py-3 px-4">{t('leads.createdAt')}</th>
                 <th className="text-right text-xs font-bold text-muted uppercase py-3 px-4">{t('common.actions')}</th>
               </tr>
             </thead>
             <tbody>
-              {leads.map((lead) => (
-                <tr key={lead.id} className="border-b border-line/50 hover:bg-aqua-1/10 transition-colors">
+              {tableRows.map((row) => {
+                const fromLegacyFile = row.legacyRowIndex !== null;
+                return (
+                <tr key={row.rowKey} className="border-b border-line/50 hover:bg-aqua-1/10 transition-colors">
                   <td className="py-3 px-4">
-                    <div className="font-semibold text-ink">{lead.file_name || lead.name}</div>
+                    <div className="font-semibold text-ink">{displayCell(row.name)}</div>
+                    {fromLegacyFile && (
+                      <div className="text-xs text-muted mt-0.5">
+                        {t('leads.rowFromImport', { n: (row.legacyRowIndex ?? 0) + 1 })}
+                      </div>
+                    )}
+                  </td>
+                  <td className="py-3 px-4 text-sm text-ink max-w-[200px] truncate" title={row.email || undefined}>
+                    {displayCell(row.email)}
+                  </td>
+                  <td className="py-3 px-4 text-sm text-ink whitespace-nowrap">
+                    {displayCell(row.phone)}
                   </td>
                   <td className="py-3 px-4">
-                    <span className="text-xs px-2 py-1 bg-aqua-1/30 text-ink rounded font-medium">
-                      {lead.file_format?.toUpperCase() || '-'}
+                    <span className="text-sm text-ink">{displayCell(row.category)}</span>
+                  </td>
+                  <td className="py-3 px-4 text-sm text-muted max-w-[180px] truncate" title={row.file_name}>
+                    {displayCell(row.file_name)}
+                  </td>
+                  <td className="py-3 px-4">
+                    <span className={`text-xs px-2 py-1 rounded-full border font-medium ${getStatusBadge(row.status)}`}>
+                      {row.status}
                     </span>
                   </td>
                   <td className="py-3 px-4">
-                    <span className="text-sm text-ink">{lead.category || '-'}</span>
-                  </td>
-                  <td className="py-3 px-4">
-                    <span className="text-sm text-ink font-medium">
-                      {lead.file_records?.length || 0} rows
-                    </span>
-                  </td>
-                  <td className="py-3 px-4">
-                    <span className={`text-xs px-2 py-1 rounded-full border font-medium ${getStatusBadge(lead.status)}`}>
-                      {lead.status}
-                    </span>
-                  </td>
-                  <td className="py-3 px-4">
-                    <span className="text-sm text-muted">{new Date(lead.created_at).toLocaleDateString()}</span>
+                    <span className="text-sm text-muted">{new Date(row.created_at).toLocaleDateString()}</span>
                   </td>
                   <td className="py-3 px-4">
                     <div className="flex items-center justify-end gap-2">
-                      {lead.phone && (
+                      {row.phone?.trim() && (
                         <>
-                          <button 
-                            onClick={() => handleStartCall(null, lead.id)}
-                            className="p-1.5 hover:bg-blue-100 rounded-lg transition-colors text-blue-600" 
+                          <button
+                            onClick={() => handleStartCall(null, row)}
+                            className="p-1.5 hover:bg-blue-100 rounded-lg transition-colors text-blue-600"
                             title="Start Call Now"
                           >
                             📞
                           </button>
-                          <button 
-                            onClick={() => openWhatsAppModal(lead.id)}
-                            className="p-1.5 hover:bg-green-100 rounded-lg transition-colors text-green-600" 
+                          <button
+                            onClick={() => openWhatsAppModal(row)}
+                            className="p-1.5 hover:bg-green-100 rounded-lg transition-colors text-green-600"
                             title="Send WhatsApp"
                           >
                             💬
                           </button>
                         </>
                       )}
-                      <button 
+                      <button
                         onClick={() => {
-                          setViewingLead(lead);
+                          setViewingRow(row);
                           setShowViewModal(true);
                         }}
-                        className="p-1.5 hover:bg-aqua-1 rounded-lg transition-colors" 
+                        className="p-1.5 hover:bg-aqua-1 rounded-lg transition-colors"
                         title="View Details"
                       >
                         👁️
                       </button>
-                      <button 
-                        onClick={() => openFollowUpModal(lead.id)}
-                        className="p-1.5 hover:bg-aqua-1 rounded-lg transition-colors" 
+                      <button
+                        onClick={() => openFollowUpModal(row)}
+                        className="p-1.5 hover:bg-aqua-1 rounded-lg transition-colors"
                         title="Follow-ups"
                       >
                         📅
                       </button>
-                      <button 
-                        onClick={() => handleDeleteLead(lead.id)}
-                        className="p-1.5 hover:bg-aqua-1 rounded-lg transition-colors text-red-500" 
+                      <button
+                        onClick={() => handleDeleteLead(row)}
+                        className="p-1.5 hover:bg-aqua-1 rounded-lg transition-colors text-red-500"
                         title="Delete"
                       >
                         🗑️
@@ -626,11 +752,44 @@ export default function Leads() {
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
-        {leads.length === 0 && !loading && (
+        {paginationMeta.last_page > 1 && (
+          <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-t border-line bg-aqua-1/15">
+            <p className="text-sm text-muted">
+              {t('leads.paginationHint', {
+                current: paginationMeta.current_page,
+                last: paginationMeta.last_page,
+                total: paginationMeta.total,
+              })}
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={listPage <= 1}
+                onClick={() => setListPage((p) => Math.max(1, p - 1))}
+                className="px-3 py-1.5 text-sm border border-line rounded-lg hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {t('common.previous')}
+              </button>
+              <span className="text-sm text-ink font-medium">
+                {paginationMeta.current_page} / {paginationMeta.last_page}
+              </span>
+              <button
+                type="button"
+                disabled={listPage >= paginationMeta.last_page}
+                onClick={() => setListPage((p) => Math.min(paginationMeta.last_page, p + 1))}
+                className="px-3 py-1.5 text-sm border border-line rounded-lg hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {t('common.next')}
+              </button>
+            </div>
+          </div>
+        )}
+        {tableRows.length === 0 && !loading && (
           <div className="p-8 text-center text-muted">
             {t('leads.noLeadsFound')}
           </div>
@@ -715,43 +874,69 @@ export default function Leads() {
       )}
 
       {/* View Lead Details Modal */}
-      {showViewModal && viewingLead && (
+      {showViewModal && viewingRow && (
         <Modal
           isOpen={true}
-          title={`Lead Details: ${viewingLead.file_name || viewingLead.name}`}
+          title={t('leads.viewContactTitle', { name: viewingRow.name })}
           onClose={() => {
             setShowViewModal(false);
-            setViewingLead(null);
+            setViewingRow(null);
           }}
         >
           <div className="space-y-4 max-h-[70vh] overflow-y-auto">
-            <div className="grid grid-cols-2 gap-4 mb-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
               <div>
-                <label className="block text-xs font-medium text-muted mb-1">Category</label>
-                <p className="text-sm text-ink">{viewingLead.category || '-'}</p>
+                <label className="block text-xs font-medium text-muted mb-1">{t('common.name')}</label>
+                <p className="text-sm text-ink">{displayCell(viewingRow.name)}</p>
               </div>
               <div>
-                <label className="block text-xs font-medium text-muted mb-1">Status</label>
-                <span className={`text-xs px-2 py-1 rounded-full border font-medium ${getStatusBadge(viewingLead.status)}`}>
-                  {viewingLead.status}
+                <label className="block text-xs font-medium text-muted mb-1">{t('common.email')}</label>
+                <p className="text-sm text-ink break-all">{displayCell(viewingRow.email)}</p>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-muted mb-1">{t('common.phone')}</label>
+                <p className="text-sm text-ink">{displayCell(viewingRow.phone)}</p>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-muted mb-1">{t('common.category')}</label>
+                <p className="text-sm text-ink">{displayCell(viewingRow.category)}</p>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-muted mb-1">{t('common.status')}</label>
+                <span className={`text-xs px-2 py-1 rounded-full border font-medium ${getStatusBadge(viewingRow.status)}`}>
+                  {viewingRow.status}
                 </span>
               </div>
               <div>
-                <label className="block text-xs font-medium text-muted mb-1">File Format</label>
-                <p className="text-sm text-ink">{viewingLead.file_format?.toUpperCase() || '-'}</p>
+                <label className="block text-xs font-medium text-muted mb-1">{t('leads.source')}</label>
+                <p className="text-sm text-ink break-all">{displayCell(viewingRow.source)}</p>
               </div>
-              <div>
-                <label className="block text-xs font-medium text-muted mb-1">Records Count</label>
-                <p className="text-sm text-ink">{viewingLead.file_records?.length || 0} rows</p>
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-medium text-muted mb-1">{t('leads.importFile')}</label>
+                <p className="text-sm text-ink">{displayCell(viewingRow.file_name)}</p>
               </div>
             </div>
 
-            {viewingLead.file_headers && viewingLead.file_headers.length > 0 && (
+            {viewingRow.raw_attributes && Object.keys(viewingRow.raw_attributes).length > 0 && (
               <div>
-                <h3 className="font-semibold text-ink mb-2">Headers</h3>
+                <h3 className="font-semibold text-ink mb-2">{t('leads.allImportFields')}</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {Object.entries(viewingRow.raw_attributes).map(([key, val]) => (
+                    <div key={key} className="border border-line rounded-lg p-3 bg-aqua-1/20">
+                      <div className="text-xs font-medium text-muted mb-1">{key}</div>
+                      <div className="text-sm text-ink break-words">{val?.trim() ? val : '—'}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {viewingRow.legacyBatch?.file_headers && viewingRow.legacyBatch.file_headers.length > 0 && (
+              <div>
+                <h3 className="font-semibold text-ink mb-2">{t('leads.fileHeaders')}</h3>
                 <div className="bg-aqua-1/30 p-3 rounded-lg">
                   <div className="flex flex-wrap gap-2">
-                    {viewingLead.file_headers.map((header, idx) => (
+                    {viewingRow.legacyBatch.file_headers.map((header, idx) => (
                       <span key={idx} className="text-xs px-2 py-1 bg-white border border-line rounded text-ink">
                         {header}
                       </span>
@@ -761,14 +946,16 @@ export default function Leads() {
               </div>
             )}
 
-            {viewingLead.file_records && viewingLead.file_records.length > 0 && (
+            {viewingRow.legacyBatch?.file_records && viewingRow.legacyBatch.file_records.length > 0 && (
               <div>
-                <h3 className="font-semibold text-ink mb-2">Records ({viewingLead.file_records.length} rows)</h3>
+                <h3 className="font-semibold text-ink mb-2">
+                  {t('leads.embeddedRecordsTitle', { count: viewingRow.legacyBatch.file_records.length })}
+                </h3>
                 <div className="overflow-x-auto border border-line rounded-lg">
                   <table className="w-full text-sm">
                     <thead className="bg-aqua-1/30 border-b border-line">
                       <tr>
-                        {viewingLead.file_headers?.map((header, idx) => (
+                        {viewingRow.legacyBatch.file_headers?.map((header, idx) => (
                           <th key={idx} className="text-left text-xs font-bold text-muted uppercase py-2 px-3">
                             {header}
                           </th>
@@ -776,8 +963,13 @@ export default function Leads() {
                       </tr>
                     </thead>
                     <tbody>
-                      {viewingLead.file_records.slice(0, 100).map((record, rowIdx) => (
-                        <tr key={rowIdx} className="border-b border-line/50 hover:bg-aqua-1/10">
+                      {viewingRow.legacyBatch.file_records.slice(0, 100).map((record, rowIdx) => (
+                        <tr
+                          key={rowIdx}
+                          className={`border-b border-line/50 hover:bg-aqua-1/10 ${
+                            viewingRow.legacyRowIndex === rowIdx ? 'bg-aqua-3/25' : ''
+                          }`}
+                        >
                           {record.map((cell, cellIdx) => (
                             <td key={cellIdx} className="py-2 px-3 text-ink">
                               {cell || '-'}
@@ -787,9 +979,12 @@ export default function Leads() {
                       ))}
                     </tbody>
                   </table>
-                  {viewingLead.file_records.length > 100 && (
+                  {viewingRow.legacyBatch.file_records.length > 100 && (
                     <div className="p-3 text-center text-xs text-muted bg-aqua-1/10">
-                      Showing first 100 of {viewingLead.file_records.length} records
+                      {t('leads.embeddedRecordsTruncated', {
+                        shown: 100,
+                        total: viewingRow.legacyBatch.file_records.length,
+                      })}
                     </div>
                   )}
                 </div>
@@ -800,13 +995,14 @@ export default function Leads() {
       )}
 
       {/* WhatsApp Modal */}
-      {showWhatsAppModal && selectedLeadId && (
+      {showWhatsAppModal && actionContactRow && (
         <Modal
           isOpen={true}
           title="Send WhatsApp Message"
           onClose={() => {
             setShowWhatsAppModal(false);
             setWhatsAppMessage('');
+            setActionContactRow(null);
           }}
         >
           <div className="space-y-4">
@@ -826,6 +1022,7 @@ export default function Leads() {
                 onClick={() => {
                   setShowWhatsAppModal(false);
                   setWhatsAppMessage('');
+                  setActionContactRow(null);
                 }}
                 className="flex-1 px-4 py-2 border border-line rounded-xl hover:bg-aqua-1/30 transition-colors text-ink font-medium"
               >
@@ -899,7 +1096,7 @@ export default function Leads() {
                       <div className="flex gap-2 ml-4">
                         {followUp.type === 'call' && followUp.status === 'scheduled' && (
                           <button
-                            onClick={() => handleStartCall(followUp, selectedLeadId)}
+                            onClick={() => handleStartCall(followUp, actionContactRow)}
                             className="px-3 py-1 text-xs bg-blue-500 text-white rounded-lg hover:bg-blue-600 flex items-center gap-1"
                             title="Start Call"
                           >

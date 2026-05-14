@@ -9,6 +9,8 @@ interface NavItem {
   badge?: string | number | null;
   roles?: string[];
   modules?: string[];
+  /** Extra context on hover (e.g. Lead list vs file import) */
+  linkTitle?: string;
 }
 
 interface SidebarProps {
@@ -39,7 +41,7 @@ export default function Sidebar({ iconOnly = false }: SidebarProps) {
   const navItems: NavItem[] = [
     { path: '/dashboard', label: t('sidebar.dashboard'), icon: '📊', roles: ['super_admin', 'company_admin', 'manager', 'staff'] },
     { path: '/sales', label: t('sidebar.sales'), icon: '💰', badge: null, roles: ['super_admin', 'company_admin', 'manager', 'staff'] },
-    { path: '/leads', label: t('sidebar.leads'), icon: '🎯', badge: null, roles: ['super_admin', 'company_admin', 'manager', 'staff'] },
+    { path: '/leads', label: t('sidebar.leads'), icon: '🎯', badge: null, roles: ['super_admin', 'company_admin', 'manager', 'staff'], linkTitle: t('sidebar.leadsLinkTitle') },
     { path: '/calls', label: t('sidebar.calls'), icon: '📞', badge: null, roles: ['super_admin', 'company_admin', 'manager', 'staff'] },
     { path: '/support', label: t('sidebar.support'), icon: '🛠️', badge: null, roles: ['super_admin', 'company_admin', 'manager', 'staff'] },
     { path: '/marketing', label: t('sidebar.marketing'), icon: '📢', roles: ['super_admin', 'company_admin', 'manager'] },
@@ -107,7 +109,7 @@ export default function Sidebar({ iconOnly = false }: SidebarProps) {
                   ? 'bg-gradient-to-r from-aqua-3/35 to-aqua-5/12 border-aqua-5/45 shadow-sm shadow-aqua-5/10'
                   : 'border-line hover:border-aqua-4/35 hover:bg-aqua-1/30'
               }`}
-              title={iconOnly ? item.label : undefined}
+              title={item.linkTitle ?? (iconOnly ? item.label : undefined)}
             >
               <div className={`flex items-center ${iconOnly ? '' : 'gap-3'}`}>
                 <span className="text-lg">{item.icon}</span>

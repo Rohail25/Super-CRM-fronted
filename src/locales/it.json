@@ -89,11 +89,29 @@
     "hot": "Bollente",
     "converted": "Convertito",
     "lost": "Perso",
-    "noLeadsFound": "Nessun lead trovato. Carica il tuo primo file per iniziare!",
+    "noLeadsFound": "Nessun contatto. Carica un CSV o Excel: ogni riga diventa un lead da chiamare.",
     "deleteConfirm": "Sei sicuro di voler eliminare questo lead?",
+    "deleteLegacyBatchConfirm": "Eliminare questo import? Verrà rimosso l'intero file e tutte le righe associate.",
+    "noPhoneForCall": "Nessun numero di telefono per questo contatto.",
+    "rowFromImport": "Riga {{n}} dall'import file",
     "uploadSuccess": "File caricato con successo!",
+    "uploadSuccessCount": "Importati {{count}} contatti dal file.",
     "uploadError": "Impossibile caricare il file. Riprova.",
-    "fileUploadHint": "La prima riga deve contenere le intestazioni. Formati supportati: CSV, Excel (.xlsx, .xls)"
+    "fileUploadHint": "La prima riga deve contenere le intestazioni. Formati supportati: CSV, Excel (.xlsx, .xls)",
+    "listSubtitle": "Una riga per contatto. Il file viene letto e ogni riga diventa un lead.",
+    "importFiltersTitle": "Filtri colonne import",
+    "importFiltersHelp": "Usa le stesse intestazioni del CSV (es. Città, Professione). Lascia la colonna vuota per cercare il testo in qualsiasi campo della riga. Più righe = tutte devono corrispondere (AND).",
+    "importFieldLabel": "Colonna (intestazione)",
+    "importFieldPlaceholder": "es. Città, City, Professione",
+    "importValueLabel": "Contiene",
+    "importValuePlaceholder": "es. Roma, Medico",
+    "addImportFilterRow": "Aggiungi filtro",
+    "legacyBatch": "Formato precedente: {{count}} righe in un solo record — apri i dettagli.",
+    "paginationHint": "Pagina {{current}} di {{last}} · {{total}} lead",
+    "viewContactTitle": "Contatto: {{name}}",
+    "allImportFields": "Tutti i campi dell'import",
+    "embeddedRecordsTitle": "Righe nel file ({{count}})",
+    "embeddedRecordsTruncated": "Prime {{shown}} righe su {{total}}"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -124,7 +142,8 @@
     "subscribe": "Abbonati",
     "logout": "Esci",
     "enterprisePlatform": "Piattaforma Enterprise",
-    "user": "Utente"
+    "user": "Utente",
+    "leadsLinkTitle": "Contatti importati — chiamate e follow-up per ogni riga"
   },
   "login": {
     "title": "Accedi al tuo account",
